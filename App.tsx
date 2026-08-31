@@ -1,20 +1,73 @@
+import { useEffect, useState, type ReactNode } from 'react';
+import { StyleSheet, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Provider as ReduxProvider } from 'react-redux';
+import { PersistGate } from 'redux-persist/integration/react';
+import { ThemeProvider, useTheme, useAppFonts } from '@components/design-system';
+import { store, persistor } from '@store/index';
+import { useAppSelector } from '@store/hooks';
+import { AppNavigator } from '@navigation/AppNavigator';
+import { getDatabase } from '@database/index';
+import * as authService from '@services/authService';
+// expo-notifications disabled for early development — see app.config.ts.
+// import { useNotificationDeepLinking } from '@notifications/pushNotifications';
+import { useAppState } from '@hooks/useAppState';
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
+    <GestureHandlerRootView style={styles.flex}>
+      <ReduxProvider store={store}>
+        <PersistGate loading={null} persistor={persistor}>
+          <ThemeProvider>
+            <SafeAreaProvider>
+              <ThemeBridge>
+                <RootContent />
+              </ThemeBridge>
+            </SafeAreaProvider>
+          </ThemeProvider>
+        </PersistGate>
+      </ReduxProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+/** Keeps @nocturnalflow/design-system's live theme in sync with themeSlice's persisted mode. */
+function ThemeBridge({ children }: { children: ReactNode }) {
+  const mode = useAppSelector((state) => state.theme.mode);
+  const systemScheme = useColorScheme();
+  const { setTheme } = useTheme();
+
+  useEffect(() => {
+    setTheme(mode === 'system' ? (systemScheme === 'light' ? 'light' : 'dark') : mode);
+  }, [mode, systemScheme, setTheme]);
+
+  return <>{children}</>;
+}
+
+function RootContent() {
+  const [fontsLoaded] = useAppFonts();
+  const [dbReady, setDbReady] = useState(false);
+
+  useEffect(() => {
+    authService.configureGameserverAuth();
+    void getDatabase().then(() => setDbReady(true));
+    void authService.restoreSession();
+  }, []);
+
+  useAppState();
+
+  if (!fontsLoaded || !dbReady) return null;
+
+  return (
+    <>
+      <AppNavigator />
       <StatusBar style="auto" />
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  flex: { flex: 1 },
 });
