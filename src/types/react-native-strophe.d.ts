@@ -26,6 +26,8 @@ declare module 'react-native-strophe' {
     constructor(service: string, options?: Record<string, unknown>);
     jid: string;
     domain: string | null;
+    /** True only between a CONNECTED status callback and the next DISCONNECTED/CONNFAIL/error — flipped directly by core.js, not derived from any cached app-level state. */
+    connected: boolean;
     rawInput: (data: string) => void;
     rawOutput: (data: string) => void;
     xmlInput: (elem: Element) => void;

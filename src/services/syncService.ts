@@ -1,11 +1,11 @@
 import { $msg } from 'react-native-strophe';
-import { getConnection, onConnectionStatusChange } from '../chatserver/stropheClient';
+import { getConnection, isConnected, onConnectionStatusChange } from '../chatserver/stropheClient';
+import { withMediaElement, withActiveChatState } from '../chatserver/receiptStanzas';
 import {
   getPendingOutgoingMessages,
-  markSubmitted,
   markError,
 } from '../database/messageRepository';
-import type { ChatMessage } from '../types/chat';
+import { MSG_TYPE, type ChatMessage } from '../types/chat';
 
 /**
  * Offline send queue: syncService is the only place that turns a
@@ -52,26 +52,37 @@ export async function flushPendingMessages(): Promise<void> {
 
 async function attemptSend(message: ChatMessage): Promise<void> {
   const connection = getConnection();
-  if (!connection || !message.CHAT_ROOM_JID || !message.SENDER_MSG_ID) {
+  if (!connection || !isConnected() || !message.CHAT_ROOM_JID || !message.SENDER_MSG_ID) {
     scheduleRetry(message);
     return;
   }
 
   try {
-    const stanza = $msg({
+    let stanza = $msg({
       to: message.CHAT_ROOM_JID,
       type: message.IS_GROUP_MSG ? 'groupchat' : 'chat',
       id: message.SENDER_MSG_ID,
     }).c('body', {}, message.MSG_TEXT ?? '');
 
+    if (message.MSG_TYPE === MSG_TYPE.STICKER || message.MSG_TYPE === MSG_TYPE.GIF) {
+      stanza = withMediaElement(stanza, {
+        msgType: message.MSG_TYPE,
+        link: message.MEDIA_CLOUD ?? '',
+        thumbnail: message.MEDIA_CLOUD_THUMBNAIL,
+      });
+    }
+
+    stanza = withActiveChatState(stanza);
+
     connection.send(stanza.tree());
 
-    // Fire-and-forget at the XMPP layer: `send()` doesn't ack. Marking
-    // IS_SUBMITTED here means "handed to the connection", not "delivered" —
-    // that distinction is IS_DELIVERED, set later by a receipt stanza
-    // handled in stropheEvents/chatService.
-    await markSubmitted(message._ID, Date.now());
-    retryStateById.delete(message._ID);
+    // No markSubmitted here — submission is only ever confirmed by the
+    // server's self-echo (handled in stropheEvents.ts), not by send() alone
+    // not throwing. There's deliberately no timeout fallback either: a
+    // message without an echo just stays IS_SUBMITTED=0 until the next
+    // foreground-resume/reconnect calls flushPendingMessages() and this
+    // same attemptSend runs again — harmless, it's a .send() of the same
+    // stanza id, not a new message.
   } catch {
     scheduleRetry(message);
   }

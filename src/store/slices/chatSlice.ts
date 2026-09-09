@@ -82,6 +82,21 @@ const chatSlice = createSlice({
     draftCleared(state, action: PayloadAction<string>) {
       draftsAdapter.removeOne(state.drafts, action.payload);
     },
+    /**
+     * Called on app backgrounding (see useAppState.ts). connectionStatus/
+     * activeConversationJid/typing are all stale the instant the app
+     * backgrounds — the OS can kill the underlying XMPP socket without
+     * warning, so a cached 'connected' status left over from before
+     * backgrounding caused resyncAfterForeground to skip reconnecting and
+     * call broadcastPresence() on a dead socket (INVALID_STATE_ERR).
+     * Drafts are deliberately untouched — losing a half-typed message on
+     * every app-switch would be a real regression.
+     */
+    chatSessionReset(state) {
+      state.connectionStatus = 'disconnected';
+      state.activeConversationJid = null;
+      state.typing = typingAdapter.getInitialState();
+    },
   },
 });
 
@@ -91,6 +106,7 @@ export const {
   typingReceived,
   draftChanged,
   draftCleared,
+  chatSessionReset,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

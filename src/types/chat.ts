@@ -91,3 +91,12 @@ export interface ReactionGroup {
  * redundantly. See messageRepository.deriveMessageStatus.
  */
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+
+/**
+ * Meaning of the ChatMessage.MSG_TYPE integer column — the column already
+ * existed (always hardcoded to 0 until now), this just assigns meaning to
+ * it. Only numbers what's actually implemented; a future kind (image,
+ * video, ...) gets the next free number when it's actually built, not
+ * reserved ahead of time.
+ */
+export const MSG_TYPE = { TEXT: 0, STICKER: 1, GIF: 2 } as const;

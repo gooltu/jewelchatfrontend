@@ -41,6 +41,9 @@
       ],
       "@config/*": [
         "./src/config/*"
+      ],
+      "@media/*": [
+        "./src/media/*"
       ]
     }
   },

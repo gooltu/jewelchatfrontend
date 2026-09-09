@@ -90,6 +90,18 @@ export function getConnection(): StropheConnection | null {
   return connection;
 }
 
+/**
+ * Checks the real Strophe connection object's own `connected` flag —
+ * deliberately not derived from Redux's cached connectionStatus, which can
+ * lag behind (e.g. the OS can kill the underlying socket while the app is
+ * backgrounded without the JS event loop running to process the resulting
+ * close event until later). Call this immediately before any send()/
+ * sendIQ()-family call rather than trusting a status checked earlier.
+ */
+export function isConnected(): boolean {
+  return connection !== null && connection.connected === true;
+}
+
 export function onConnectionStatusChange(listener: StatusListener): () => void {
   statusListeners.push(listener);
   return () => {

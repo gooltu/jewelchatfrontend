@@ -43,12 +43,12 @@ function isChatNotificationData(data: unknown): data is ChatNotificationData {
 
 function routeToConversation(data: ChatNotificationData): void {
   if (!navigationRef.isReady()) return;
-  navigationRef.navigate('App', {
-    screen: 'ChatsTab',
-    params: {
-      screen: 'ChatDetail',
-      params: { chatRoomJid: data.chatRoomJid, title: data.title, isGroup: data.isGroup },
-    },
+  // ChatDetail is a root-stack screen (sibling of App), not nested under
+  // ChatsTab — see RootStackParamList's doc comment in navigation/types.ts.
+  navigationRef.navigate('ChatDetail', {
+    chatRoomJid: data.chatRoomJid,
+    title: data.title,
+    isGroup: data.isGroup,
   });
 }
 

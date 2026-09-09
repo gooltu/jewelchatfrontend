@@ -29,20 +29,60 @@ export function setUnauthorizedHandler(handler: () => void): void {
   onUnauthorized = handler;
 }
 
+/**
+ * Called on a 401 response to attempt a token refresh + retry of the
+ * original request, before falling back to onUnauthorized. Registered via
+ * a setter, matching setAuthTokenProvider/setUnauthorizedHandler above, so
+ * this module stays free of any import from tokenRefresh.ts/authService.ts.
+ */
+let refreshAndRetry: ((error: AxiosError) => Promise<unknown>) | null = null;
+
+export function setRefreshHandler(handler: (error: AxiosError) => Promise<unknown>): void {
+  refreshAndRetry = handler;
+}
+
 gameserverClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const token = await authTokenProvider?.();
   if (token) {
     config.headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (__DEV__) {
+    console.log(
+      `[gameserver] ${config.method?.toUpperCase()} ${config.url} auth=${token ? 'bearer' : 'none'}`,
+    );
   }
   return config;
 });
 
 gameserverClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
+    if (error.response?.status === 401 && refreshAndRetry) {
+      return refreshAndRetry(error);
+    }
     if (error.response?.status === 401) {
       onUnauthorized?.();
     }
     return Promise.reject(error);
   },
 );
+
+/** Dev-only response logging — runs after the 401/refresh handling above, so it logs the final settled outcome (including any retried request). */
+if (__DEV__) {
+  gameserverClient.interceptors.response.use(
+    (response) => {
+      console.log(
+        `[gameserver] ${response.config.method?.toUpperCase()} ${response.config.url} ->`,
+        response.data,
+      );
+      return response;
+    },
+    (error: AxiosError) => {
+      console.log(
+        `[gameserver] ${error.config?.method?.toUpperCase()} ${error.config?.url} failed ->`,
+        error.response?.data ?? error.message,
+      );
+      return Promise.reject(error);
+    },
+  );
+}

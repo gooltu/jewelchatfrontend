@@ -10,6 +10,7 @@ import {
   REGISTER,
 } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import devToolsEnhancer from 'redux-devtools-expo-dev-plugin';
 
 import authReducer from './slices/authSlice';
 import chatReducer from './slices/chatSlice';
@@ -51,6 +52,13 @@ export const store = configureStore({
         ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
       },
     }),
+  // Expo's own DevTools plugin (works in Expo Go, no dev-client needed) —
+  // opened via `Shift+M` in the `npx expo start` terminal. Dev-only: the
+  // built-in browser-extension devTools stay off entirely in production.
+  devTools: false,
+  enhancers: __DEV__
+    ? (getDefaultEnhancers) => getDefaultEnhancers().concat(devToolsEnhancer())
+    : undefined,
 });
 
 export const persistor = persistStore(store);

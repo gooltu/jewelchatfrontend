@@ -6,14 +6,14 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
  * @nocturnalflow/design-system — this slice just remembers the user's
  * light/dark/system choice across app restarts.
  */
-export type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeMode = 'light' | 'dark';
 
 interface ThemeState {
   mode: ThemeMode;
 }
 
 const initialState: ThemeState = {
-  mode: 'system',
+  mode: 'dark',
 };
 
 const themeSlice = createSlice({

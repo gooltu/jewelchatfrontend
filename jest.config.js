@@ -14,6 +14,7 @@ module.exports = {
     '^@components/(.*)$': '<rootDir>/src/components/$1',
     '^@app-types/(.*)$': '<rootDir>/src/types/$1',
     '^@config/(.*)$': '<rootDir>/src/config/$1',
+    '^@media/(.*)$': '<rootDir>/src/media/$1',
   },
   transformIgnorePatterns: [
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)',

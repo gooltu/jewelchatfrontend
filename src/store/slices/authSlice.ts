@@ -6,7 +6,7 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
  * Redux (and never persisted via redux-persist's AsyncStorage-backed
  * storage engine).
  */
-export type AuthStatus = 'signedOut' | 'authenticating' | 'signedIn';
+export type AuthStatus = 'initializing' | 'signedOut' | 'authenticating' | 'signedIn';
 
 interface AuthState {
   status: AuthStatus;
@@ -17,7 +17,7 @@ interface AuthState {
 }
 
 const initialState: AuthState = {
-  status: 'signedOut',
+  status: 'initializing',
   userId: null,
   jid: null,
   displayName: null,

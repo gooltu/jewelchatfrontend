@@ -14,9 +14,14 @@ import { Strophe, type StropheConnection } from 'react-native-strophe';
 import {
   getMessageBySenderMsgId,
   insertIncomingMessage,
+  markSubmitted,
+  markDelivered,
+  markRead,
 } from '../database/messageRepository';
 import { replaceReactorReactions } from '../database/reactionRepository';
 import { incrementUnreadCount, updateLastMessagePreview } from '../database/contactRepository';
+import { RECEIPTS_NS, CHAT_MARKERS_NS, buildReceivedStanza } from './receiptStanzas';
+import { MSG_TYPE } from '../types/chat';
 import type { ChatMessage } from '../types/chat';
 
 /** XEP-0444 Message Reactions. */
@@ -31,13 +36,19 @@ export interface StropheEventCallbacks {
   onTypingChanged?: (chatRoomJid: string, isTyping: boolean) => void;
 }
 
+/**
+ * `myJid` is required to detect the server's self-echo (submit confirmation
+ * — see handleSelfEcho) and to correlate an inbound `<received>`/`<displayed>`
+ * back to the sender's own outgoing row.
+ */
 export function registerStanzaHandlers(
   connection: StropheConnection,
+  myJid: string,
   callbacks: StropheEventCallbacks = {},
 ): void {
   connection.addHandler(
     (stanza) => {
-      void handleMessageStanza(stanza, callbacks);
+      void handleMessageStanza(stanza, connection, myJid, callbacks);
       return true;
     },
     null,
@@ -50,10 +61,22 @@ export function registerStanzaHandlers(
 
 async function handleMessageStanza(
   stanza: Element,
+  connection: StropheConnection,
+  myJid: string,
   callbacks: StropheEventCallbacks,
 ): Promise<void> {
   const from = stanza.getAttribute('from');
   if (!from) return;
+
+  // Server self-echo: confirms the server accepted a message *we* sent —
+  // structurally different from a genuine incoming message, so this check
+  // must run before any of the dispatch below (which all assume `from` is
+  // someone else's JID).
+  const fromBare = Strophe.getBareJidFromJid(from);
+  if (fromBare === myJid) {
+    await handleSelfEcho(stanza, myJid, callbacks);
+    return;
+  }
 
   const type = stanza.getAttribute('type'); // 'chat' | 'groupchat' | 'error' | ...
   const isGroupMsg = type === 'groupchat';
@@ -78,9 +101,37 @@ async function handleMessageStanza(
     callbacks.onTypingChanged?.(chatRoomJid, chatState === 'composing');
   }
 
+  const receivedElem = firstChildByTagNameNs(stanza, 'received', RECEIPTS_NS);
+  if (receivedElem) {
+    const id = receivedElem.getAttribute('id');
+    if (id) {
+      const row = await getMessageBySenderMsgId(chatRoomJid, myJid, id);
+      if (row) {
+        await markDelivered(row._ID, Date.now());
+        const updated = await getMessageBySenderMsgId(chatRoomJid, myJid, id);
+        if (updated) callbacks.onMessageStored?.(updated);
+      }
+    }
+    return;
+  }
+
+  const displayedElem = firstChildByTagNameNs(stanza, 'displayed', CHAT_MARKERS_NS);
+  if (displayedElem) {
+    const id = displayedElem.getAttribute('id');
+    if (id) {
+      const row = await getMessageBySenderMsgId(chatRoomJid, myJid, id);
+      if (row) {
+        await markRead(row._ID, Date.now());
+        const updated = await getMessageBySenderMsgId(chatRoomJid, myJid, id);
+        if (updated) callbacks.onMessageStored?.(updated);
+      }
+    }
+    return;
+  }
+
   const bodyElem = firstChildByTagName(stanza, 'body');
   const msgText = bodyElem?.textContent ?? null;
-  if (!msgText) return; // no body, no reaction extension: e.g. a bare chat-state notification — nothing to persist
+  if (!msgText) return; // no body, no reaction/receipt/marker: e.g. a bare chat-state notification — nothing to persist
 
   const senderMsgId = stanza.getAttribute('id') ?? `${chatRoomJid}-${Date.now()}`;
 
@@ -92,10 +143,18 @@ async function handleMessageStanza(
   const existing = await getMessageBySenderMsgId(chatRoomJid, creatorJid, senderMsgId);
   if (existing) return;
 
+  // Bare (non-namespaced) <media/> — confirmed wire format from a real
+  // prior-working implementation, not a registered XEP. Absent on plain
+  // text messages.
+  const mediaElem = firstChildByTagName(stanza, 'media');
+  const msgType = mediaElem ? Number(mediaElem.getAttribute('number')) : MSG_TYPE.TEXT;
+  const mediaLink = mediaElem?.getAttribute('link') ?? null;
+  const mediaThumbnail = mediaElem?.getAttribute('thumbnail') ?? null;
+
   const now = Date.now();
   await insertIncomingMessage({
     IS_GROUP_MSG: isGroupMsg ? 1 : 0,
-    MSG_TYPE: 0,
+    MSG_TYPE: msgType,
     CREATED_DATE: new Date(now).toISOString().slice(0, 10),
     CREATED_TIME: now,
     CHAT_ROOM_JID: chatRoomJid,
@@ -112,18 +171,51 @@ async function handleMessageStanza(
     IS_JEWEL_PICKED: 0,
     MSG_TEXT: msgText,
     MEDIA_UPLOADED: 0,
-    MEDIA_CLOUD: null,
-    MEDIA_CLOUD_THUMBNAIL: null,
+    MEDIA_CLOUD: mediaLink,
+    MEDIA_CLOUD_THUMBNAIL: mediaThumbnail,
     IS_REPLY: 0,
     REPLY_PARENT: null,
     IS_FORWARD: 0,
   });
 
   await incrementUnreadCount(chatRoomJid);
-  await updateLastMessagePreview(chatRoomJid, { msgText, msgType: 0, createdTime: now });
+  await updateLastMessagePreview(chatRoomJid, { msgText, msgType, createdTime: now });
 
   const stored = await getMessageBySenderMsgId(chatRoomJid, creatorJid, senderMsgId);
   if (stored) callbacks.onMessageStored?.(stored);
+
+  // 1-1 only (Assumption 7 in the plan) — send a delivery receipt back
+  // unconditionally, matching this server's own unconditional-receipt
+  // behavior (no <request/> needed on either side).
+  if (!isGroupMsg && connection.connected) {
+    connection.send(buildReceivedStanza(from, senderMsgId).tree());
+  }
+}
+
+/**
+ * Server self-echo: confirms the server accepted a message *we* sent —
+ * `from`/`to` are swapped relative to a normal incoming message (`from` is
+ * our own bare JID, `to` is the peer we originally sent to), and the `id`
+ * matches the original SENDER_MSG_ID. This is what actually drives the
+ * single-tick (IS_SUBMITTED) transition — not `connection.send()` succeeding
+ * without throwing (see syncService.ts).
+ */
+async function handleSelfEcho(
+  stanza: Element,
+  myJid: string,
+  callbacks: StropheEventCallbacks,
+): Promise<void> {
+  const to = stanza.getAttribute('to');
+  const senderMsgId = stanza.getAttribute('id');
+  if (!to || !senderMsgId) return;
+
+  const peerChatRoomJid = Strophe.getBareJidFromJid(to) ?? to;
+  const row = await getMessageBySenderMsgId(peerChatRoomJid, myJid, senderMsgId);
+  if (!row) return;
+
+  await markSubmitted(row._ID, Date.now());
+  const updated = await getMessageBySenderMsgId(peerChatRoomJid, myJid, senderMsgId);
+  if (updated) callbacks.onMessageStored?.(updated);
 }
 
 /**
@@ -175,12 +267,12 @@ function firstChatStateTagName(stanza: Element): string | null {
   return null;
 }
 
-function firstChildByTagName(elem: Element, tagName: string): Element | null {
+export function firstChildByTagName(elem: Element, tagName: string): Element | null {
   const nodes = elem.getElementsByTagName(tagName);
   return nodes.length > 0 ? nodes[0] : null;
 }
 
-function firstChildByTagNameNs(elem: Element, tagName: string, ns: string): Element | null {
+export function firstChildByTagNameNs(elem: Element, tagName: string, ns: string): Element | null {
   const nodes = elem.getElementsByTagName(tagName);
   for (let i = 0; i < nodes.length; i += 1) {
     const node = nodes[i];

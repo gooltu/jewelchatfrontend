@@ -1,20 +1,35 @@
+import { useState } from 'react';
+import { Edit3, MoreVertical, Search } from 'lucide-react-native';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useStyles,
   type ThemeColors,
+  spacing,
   Header,
   ChatListItem,
   EmptyState,
+  FloatingButton,
+  InputField,
   SkeletonRow,
 } from '@components/design-system';
 import { useConversations } from '@hooks/useConversations';
 import type { ChatScreenProps } from '@navigation/types';
 import type { Conversation } from '@app-types/chat';
 
+const crateIcon = require('../../../../assets/jewelbox.png');
+const gemIcon = require('../../../../assets/factory.png');
+
 export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
   const styles = useStyles(makeStyles);
   const { conversations, loading } = useConversations();
+  const [query, setQuery] = useState('');
+
+  const filtered = conversations.filter((c) =>
+    (c.CONTACT_NAME ?? c.PHONEBOOK_CONTACT_NAME ?? c.JID ?? '')
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
 
   const openConversation = (conversation: Conversation) => {
     if (!conversation.JID) return;
@@ -26,8 +41,25 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Header title="Chats" />
+    <SafeAreaView style={styles.container} edges={[]}>
+      <Header
+        title="Chats"
+        actions={[
+          { key: 'crates', label: '3 crates', image: crateIcon },
+          { key: 'gems', label: '24 gems', image: gemIcon },
+          { key: 'more', label: 'Chats options', icon: MoreVertical },
+        ]}
+        gamebar={{ level: 1, xpCurrent: 0, xpMax: 300 }}
+      />
+
+      <View style={styles.searchWrap}>
+        <InputField
+          icon={Search}
+          placeholder="Search messages"
+          value={query}
+          onChangeText={setQuery}
+        />
+      </View>
 
       {loading ? (
         <View style={styles.list}>
@@ -35,15 +67,20 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
             <SkeletonRow key={index} />
           ))}
         </View>
-      ) : conversations.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
-          title="No conversations yet"
-          description="Start a conversation and it will show up here."
+          title={query ? 'No results' : 'No conversations yet'}
+          description={
+            query
+              ? `Nothing matches "${query}". Try a different name.`
+              : 'Start a conversation and it will show up here.'
+          }
         />
       ) : (
         <FlatList
-          data={conversations}
+          data={filtered}
           keyExtractor={(item) => String(item._ID)}
+          contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
             <ChatListItem
               name={item.CONTACT_NAME ?? item.PHONEBOOK_CONTACT_NAME ?? item.JID ?? 'Unknown'}
@@ -56,6 +93,13 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
           )}
         />
       )}
+
+      <FloatingButton
+        icon={Edit3}
+        label="New message"
+        onPress={() => navigation.navigate('SelectContact')}
+        style={styles.fab}
+      />
     </SafeAreaView>
   );
 }
@@ -66,7 +110,7 @@ function formatTimestamp(epochMs: number | null): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function initialsFor(name: string | null | undefined): string {
+export function initialsFor(name: string | null | undefined): string {
   if (!name) return '?';
   return name
     .split(' ')
@@ -79,5 +123,12 @@ function initialsFor(name: string | null | undefined): string {
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.surface },
+    searchWrap: { paddingHorizontal: spacing.marginMobile, paddingVertical: spacing.sm },
     list: { flex: 1 },
+    listContent: { paddingBottom: spacing.lg },
+    fab: {
+      position: 'absolute',
+      right: spacing.md,
+      bottom: spacing.lg,
+    },
   });

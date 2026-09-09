@@ -1,19 +1,57 @@
+import { useMemo } from 'react';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useTheme } from '@components/design-system';
 import { useAppSelector } from '@store/hooks';
 import { AuthNavigator } from './AuthNavigator';
 import { TabNavigator } from './TabNavigator';
+import { buildNavigationTheme } from './navigationTheme';
+import { SplashScreen } from '@components/screens/auth/SplashScreen';
+import { ChatDetailScreen } from '@components/screens/chat/ChatDetailScreen';
+import { SelectContactScreen } from '@components/screens/chat/SelectContactScreen';
+import { ContactProfileScreen } from '@components/screens/chat/ContactProfileScreen';
 import type { RootStackParamList } from './types';
 
 /** Exposed so notifications/pushNotifications.ts can navigate from outside React (deep links). */
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
-/** Root switch navigator: AuthNavigator vs TabNavigator, driven by authSlice's status. */
+const RootStack = createNativeStackNavigator<RootStackParamList>();
+
+/**
+ * The signed-in tree: the tab flow plus full-screen pushes over it
+ * (ChatDetail/SelectContact/ContactProfile) as root-level siblings of `App`,
+ * not nested inside Tab.Navigator's own stack — see RootStackParamList's
+ * doc comment in ./types.ts for why (KeyboardAvoidingView measurement bug).
+ */
+function SignedInNavigator() {
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Screen name="App" component={TabNavigator} />
+      <RootStack.Screen name="ChatDetail" component={ChatDetailScreen} />
+      <RootStack.Screen name="SelectContact" component={SelectContactScreen} />
+      <RootStack.Screen name="ContactProfile" component={ContactProfileScreen} />
+    </RootStack.Navigator>
+  );
+}
+
+/** Root switch: Splash (restoring session) vs AuthNavigator vs the signed-in tree, driven by authSlice's status. */
 export function AppNavigator() {
   const status = useAppSelector((state) => state.auth.status);
+  const { colors, themeName } = useTheme();
+  const navigationTheme = useMemo(
+    () => buildNavigationTheme(colors, themeName),
+    [colors, themeName],
+  );
 
   return (
-    <NavigationContainer ref={navigationRef}>
-      {status === 'signedIn' ? <TabNavigator /> : <AuthNavigator />}
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+      {status === 'initializing' ? (
+        <SplashScreen />
+      ) : status === 'signedIn' ? (
+        <SignedInNavigator />
+      ) : (
+        <AuthNavigator />
+      )}
     </NavigationContainer>
   );
 }

@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { StyleSheet, View, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider as ReduxProvider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
-import { ThemeProvider, useTheme, useAppFonts } from '@components/design-system';
+import { ThemeProvider, useTheme, useThemeColors, useAppFonts } from '@components/design-system';
 import { store, persistor } from '@store/index';
 import { useAppSelector } from '@store/hooks';
 import { AppNavigator } from '@navigation/AppNavigator';
@@ -49,6 +49,7 @@ function ThemeBridge({ children }: { children: ReactNode }) {
 function RootContent() {
   const [fontsLoaded] = useAppFonts();
   const [dbReady, setDbReady] = useState(false);
+  const colors = useThemeColors();
 
   useEffect(() => {
     authService.configureGameserverAuth();
@@ -61,10 +62,10 @@ function RootContent() {
   if (!fontsLoaded || !dbReady) return null;
 
   return (
-    <>
+    <View style={[styles.flex, { backgroundColor: colors.background }]}>
       <AppNavigator />
       <StatusBar style="auto" />
-    </>
+    </View>
   );
 }
 

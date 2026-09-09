@@ -7,6 +7,7 @@ interface AppExtra {
   gameserverUrl: string;
   chatserverUrl: string;
   chatserverDomain: string;
+  klipyApiKey: string;
 }
 
 /**
@@ -29,6 +30,7 @@ export const env = {
   gameserverUrl: extra.gameserverUrl,
   chatserverUrl: extra.chatserverUrl,
   chatserverDomain: extra.chatserverDomain,
+  klipyApiKey: extra.klipyApiKey,
   isDevelopment: extra.appEnv === 'development',
   isProduction: extra.appEnv === 'production',
 };
