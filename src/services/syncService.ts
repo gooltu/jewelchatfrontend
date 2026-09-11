@@ -58,11 +58,16 @@ async function attemptSend(message: ChatMessage): Promise<void> {
   }
 
   try {
+    // `msgtype` is a top-level attribute (not the XMPP `type` attribute,
+    // which is already 'chat'/'groupchat' routing) carrying this app's own
+    // MSG_TYPE explicitly, for both 1-1 and group — not a registered XEP,
+    // same informal-extension convention as the bare <media/> element below.
     let stanza = $msg({
       to: message.CHAT_ROOM_JID,
       type: message.IS_GROUP_MSG ? 'groupchat' : 'chat',
       id: message.SENDER_MSG_ID,
-    }).c('body', {}, message.MSG_TEXT ?? '');
+      msgtype: String(message.MSG_TYPE ?? MSG_TYPE.TEXT),
+    }).c('body', {}).t(message.MSG_TEXT ?? '');
 
     if (message.MSG_TYPE === MSG_TYPE.STICKER || message.MSG_TYPE === MSG_TYPE.GIF) {
       stanza = withMediaElement(stanza, {
@@ -83,7 +88,8 @@ async function attemptSend(message: ChatMessage): Promise<void> {
     // foreground-resume/reconnect calls flushPendingMessages() and this
     // same attemptSend runs again — harmless, it's a .send() of the same
     // stanza id, not a new message.
-  } catch {
+  } catch (err) {
+    if (__DEV__) console.log('[attemptSend] threw', err);
     scheduleRetry(message);
   }
 }

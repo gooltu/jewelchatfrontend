@@ -19,6 +19,12 @@ export async function getAllContactsForPicker(): Promise<Contact[]> {
   );
 }
 
+/** All group `Contact` rows — used to reconcile against the server's `disco#items` room list. */
+export async function getGroupContacts(): Promise<Contact[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<Contact>(`SELECT * FROM Contact WHERE IS_GROUP = 1;`);
+}
+
 export async function getContactByJid(jid: string): Promise<Contact | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<Contact>(`SELECT * FROM Contact WHERE JID = ?;`, [jid]);
@@ -28,6 +34,16 @@ export async function getContactByJid(jid: string): Promise<Contact | null> {
 export async function getContactById(id: number): Promise<Contact | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<Contact>(`SELECT * FROM Contact WHERE _ID = ?;`, [id]);
+  return row ?? null;
+}
+
+/** Read-only phonebook cross-reference — see services/identityService.ts. */
+export async function getContactByNumber(contactNumber: number): Promise<Contact | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<Contact>(
+    `SELECT * FROM Contact WHERE CONTACT_NUMBER = ?;`,
+    [contactNumber],
+  );
   return row ?? null;
 }
 
@@ -134,6 +150,23 @@ export async function updateLastMessagePreview(
     `UPDATE Contact SET MSG_TEXT = ?, MSG_TYPE = ?, LAST_MSG_CREATED_TIME = ? WHERE JID = ?;`,
     [args.msgText, args.msgType, args.createdTime, jid],
   );
+}
+
+/** Renames a group room locally — driven by a live `#configuration` notification or a `disco#items` reconcile. */
+export async function updateGroupName(jid: string, name: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`UPDATE Contact SET CONTACT_NAME = ? WHERE JID = ?;`, [name, jid]);
+}
+
+/**
+ * Reflects the signed-in user's own `GroupMembers.AFFILIATION` for this room
+ * onto `Contact.IS_GROUP_ADMIN` — the authoritative permission check stays
+ * `AFFILIATION === 'owner'`; this column just mirrors it for anything that
+ * reads the Contact row directly (e.g. inspecting the table, list rendering).
+ */
+export async function updateGroupAdminFlag(jid: string, isAdmin: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`UPDATE Contact SET IS_GROUP_ADMIN = ? WHERE JID = ?;`, [isAdmin ? 1 : 0, jid]);
 }
 
 export async function incrementUnreadCount(jid: string): Promise<void> {

@@ -77,6 +77,27 @@ export interface MessageReaction {
   REACTED_TIME: number | null;
 }
 
+/** Per-member delivered/read tracking for a group message — see schema.ts's CREATE_MESSAGE_RECEIPT_TABLE. */
+export interface MessageReceipt {
+  _ID: number;
+  CHAT_ROOM_JID: string | null;
+  SENDER_MSG_ID: string | null;
+  MEMBER_JID: string | null;
+  IS_DELIVERED: number;
+  TIME_DELIVERED: number | null;
+  IS_READ: number;
+  TIME_READ: number | null;
+}
+
+/** A JID's cached game-server identity — see schema.ts's CREATE_RESOLVED_IDENTITY_TABLE. */
+export interface ResolvedIdentity {
+  JEWELCHAT_ID: number | null;
+  JID: string;
+  PHONE: string | null;
+  NAME: string | null;
+  RESOLVED_TIME: number | null;
+}
+
 /** One emoji's aggregated reactions on a single message, for rendering a reaction pill. */
 export interface ReactionGroup {
   emoji: string;
@@ -98,5 +119,19 @@ export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
  * it. Only numbers what's actually implemented; a future kind (image,
  * video, ...) gets the next free number when it's actually built, not
  * reserved ahead of time.
+ *
+ * SYSTEM rows (group created/renamed/roster changes) are synthesized
+ * locally, never sent over the wire — CREATOR_JID is null and the UI
+ * renders MSG_TEXT via SystemLabel instead of a MessageBubble.
  */
-export const MSG_TYPE = { TEXT: 0, STICKER: 1, GIF: 2 } as const;
+export const MSG_TYPE = { TEXT: 0, STICKER: 1, GIF: 2, SYSTEM: 3 } as const;
+
+/**
+ * Chat-game jewel values a real incoming message (never our own) may be
+ * assigned on arrival — see ChatMessage.JEWEL_TYPE in schema.ts.
+ */
+export const JEWEL_TYPES = [3, 6, 9, 12, 15] as const;
+
+export function randomJewelType(): number {
+  return JEWEL_TYPES[Math.floor(Math.random() * JEWEL_TYPES.length)];
+}

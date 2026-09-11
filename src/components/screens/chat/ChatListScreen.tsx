@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { Edit3, MoreVertical, Search } from 'lucide-react-native';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,15 +6,16 @@ import {
   useStyles,
   type ThemeColors,
   spacing,
-  Header,
   ChatListItem,
   EmptyState,
   FloatingButton,
   InputField,
   SkeletonRow,
 } from '@components/design-system';
+import { JewelStoreSheet } from '@components/shared/JewelStoreSheet';
 import { useConversations } from '@hooks/useConversations';
-import type { ChatScreenProps } from '@navigation/types';
+import { useGamebarStats } from '@hooks/useGamebarStats';
+import type { ChatScreenProps, AppStackOptions } from '@navigation/types';
 import type { Conversation } from '@app-types/chat';
 
 const crateIcon = require('../../../../assets/jewelbox.png');
@@ -24,6 +25,23 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
   const styles = useStyles(makeStyles);
   const { conversations, loading } = useConversations();
   const [query, setQuery] = useState('');
+  const [jewelStoreVisible, setJewelStoreVisible] = useState(false);
+  const gamebar = useGamebarStats();
+
+  useLayoutEffect(() => {
+    const options: AppStackOptions = {
+      title: 'Chats',
+      headerProps: {
+        actions: [
+          { key: 'crates', label: '3 crates', image: crateIcon, onPress: () => setJewelStoreVisible(true) },
+          { key: 'gems', label: '24 gems', image: gemIcon },
+          { key: 'more', label: 'Chats options', icon: MoreVertical },
+        ],
+        gamebar,
+      },
+    };
+    navigation.setOptions(options);
+  }, [navigation, gamebar]);
 
   const filtered = conversations.filter((c) =>
     (c.CONTACT_NAME ?? c.PHONEBOOK_CONTACT_NAME ?? c.JID ?? '')
@@ -42,16 +60,6 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      <Header
-        title="Chats"
-        actions={[
-          { key: 'crates', label: '3 crates', image: crateIcon },
-          { key: 'gems', label: '24 gems', image: gemIcon },
-          { key: 'more', label: 'Chats options', icon: MoreVertical },
-        ]}
-        gamebar={{ level: 1, xpCurrent: 0, xpMax: 300 }}
-      />
-
       <View style={styles.searchWrap}>
         <InputField
           icon={Search}
@@ -100,6 +108,8 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
         onPress={() => navigation.navigate('SelectContact')}
         style={styles.fab}
       />
+
+      <JewelStoreSheet visible={jewelStoreVisible} onClose={() => setJewelStoreVisible(false)} />
     </SafeAreaView>
   );
 }

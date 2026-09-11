@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -7,20 +7,30 @@ import {
   spacing,
   typography,
   states,
-  Header,
   EmptyState,
   SkeletonRow,
+  ButtonPrimary,
 } from '@components/design-system';
 import { ContactAvatar } from '@components/shared/ContactAvatar';
 import { useSelectableContacts } from '@hooks/useSelectableContacts';
+import { useGamebarStats } from '@hooks/useGamebarStats';
 import { resolveContactOnTap } from '@services/contactSyncService';
-import type { RootScreenProps } from '@navigation/types';
+import type { RootScreenProps, AppStackOptions } from '@navigation/types';
 import type { Contact } from '@app-types/chat';
 
 export function SelectContactScreen({ navigation }: RootScreenProps<'SelectContact'>) {
   const styles = useStyles(makeStyles);
   const { contacts, loading } = useSelectableContacts();
   const [resolvingId, setResolvingId] = useState<number | null>(null);
+  const gamebar = useGamebarStats();
+
+  useLayoutEffect(() => {
+    const options: AppStackOptions = {
+      title: 'Contacts',
+      headerProps: { gamebar },
+    };
+    navigation.setOptions(options);
+  }, [navigation, gamebar]);
 
   const handlePress = async (contact: Contact) => {
     if (resolvingId !== null) return;
@@ -46,11 +56,13 @@ export function SelectContactScreen({ navigation }: RootScreenProps<'SelectConta
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Header
-        title="Contacts"
-        onBack={() => navigation.goBack()}
-        gamebar={{ level: 1, xpCurrent: 0, xpMax: 300 }}
-      />
+      <View style={styles.createGroupWrap}>
+        <ButtonPrimary
+          label="Create group"
+          onPress={() => navigation.navigate('SelectGroupMembers', {})}
+        />
+      </View>
+
       {loading ? (
         <View style={styles.list}>
           {Array.from({ length: 6 }).map((_, index) => (
@@ -99,6 +111,7 @@ export function SelectContactScreen({ navigation }: RootScreenProps<'SelectConta
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.surface },
+    createGroupWrap: { paddingHorizontal: spacing.marginMobile, paddingVertical: spacing.sm },
     list: { flex: 1 },
     listContent: { paddingBottom: spacing.lg },
     row: {

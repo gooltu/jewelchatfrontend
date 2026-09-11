@@ -49,6 +49,7 @@ gameserverClient.interceptors.request.use(async (config: InternalAxiosRequestCon
   if (__DEV__) {
     console.log(
       `[gameserver] ${config.method?.toUpperCase()} ${config.url} auth=${token ? 'bearer' : 'none'}`,
+      config.data ?? '',
     );
   }
   return config;

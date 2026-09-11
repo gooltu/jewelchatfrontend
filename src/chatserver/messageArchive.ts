@@ -41,6 +41,34 @@ export async function fetchArchivedMessages(
   myJid: string,
   onMessage: (message: ArchivedMessage) => void,
 ): Promise<void> {
+  return fetchArchive(startMs, myJid, null, onMessage);
+}
+
+/**
+ * Same MAM query, addressed (`to`) to a MUC-Light room's own archive instead
+ * of the account's — mod_mam's `[modules.mod_mam.muc].host` is deliberately
+ * pointed at `muclight.<domain>` server-side for exactly this (see
+ * ChatServerConf/CLAUDE.md), so per-room queries resolve to that room's
+ * history rather than nowhere. Archived group messages already carry the
+ * same `from = room@muclight.domain/nickname` shape live group messages do
+ * (see stropheEvents.ts), so `handleResultStanza` needs no group-specific
+ * parsing beyond what it already does for `type='groupchat'`.
+ */
+export async function fetchArchivedRoomMessages(
+  startMs: number,
+  roomJid: string,
+  myJid: string,
+  onMessage: (message: ArchivedMessage) => void,
+): Promise<void> {
+  return fetchArchive(startMs, myJid, roomJid, onMessage);
+}
+
+async function fetchArchive(
+  startMs: number,
+  myJid: string,
+  roomJid: string | null,
+  onMessage: (message: ArchivedMessage) => void,
+): Promise<void> {
   const connection = getConnection();
   if (!connection) throw new Error('fetchArchivedMessages: not connected');
 
@@ -63,7 +91,7 @@ export async function fetchArchivedMessages(
     );
 
     try {
-      after = await sendQueryPage(connection, queryId, startIso, after);
+      after = await sendQueryPage(connection, queryId, startIso, after, roomJid);
       hasMore = after !== null;
     } finally {
       connection.deleteHandler(handlerRef);
@@ -77,9 +105,10 @@ function sendQueryPage(
   queryId: string,
   startIso: string,
   after: string | null,
+  roomJid: string | null,
 ): Promise<string | null> {
   return new Promise((resolve, reject) => {
-    let query = $iq({ type: 'set' })
+    let query = $iq(roomJid ? { type: 'set', to: roomJid } : { type: 'set' })
       .c('query', { xmlns: MAM_NS, queryid: queryId })
       .c('x', { xmlns: 'jabber:x:data', type: 'submit' })
       .c('field', { var: 'FORM_TYPE', type: 'hidden' })
@@ -151,8 +180,11 @@ function handleResultStanza(
   const creatorJid = isOwnSentMessage ? myJid : isGroupMsg ? from : fromBare;
   if (!chatRoomJid) return;
 
+  // `msgtype` is a top-level attribute the server preserves on the archived
+  // copy of the original stanza — see syncService.ts/stropheEvents.ts.
+  const msgTypeAttr = original.getAttribute('msgtype');
+  const msgType = msgTypeAttr !== null ? Number(msgTypeAttr) : MSG_TYPE.TEXT;
   const mediaElem = firstChildByTagName(original, 'media');
-  const msgType = mediaElem ? Number(mediaElem.getAttribute('number')) : MSG_TYPE.TEXT;
 
   const delay = forwarded && firstChildByTagNameNs(forwarded, 'delay', DELAY_NS);
   const stamp = delay?.getAttribute('stamp');

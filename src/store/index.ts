@@ -14,11 +14,17 @@ import devToolsEnhancer from 'redux-devtools-expo-dev-plugin';
 
 import authReducer from './slices/authSlice';
 import chatReducer from './slices/chatSlice';
+import gameReducer from './slices/gameSlice';
+import taskElementsReducer from './slices/taskElementsSlice';
+import tasksReducer from './slices/tasksSlice';
 import themeReducer from './slices/themeSlice';
 
 const rootReducer = combineReducers({
   auth: authReducer,
   chat: chatReducer,
+  game: gameReducer,
+  taskElements: taskElementsReducer,
+  tasks: tasksReducer,
   theme: themeReducer,
 });
 
@@ -36,7 +42,18 @@ const persistConfig = {
   //    rehydrated from AsyncStorage.
   //  - Message history and conversation lists are never in Redux at all —
   //    SQLite (src/database/) is their source of truth.
-  whitelist: ['theme'],
+  //  - `game` (score/jewels) IS persisted, unlike chat/auth above — the last
+  //    known value should render immediately on relaunch, ahead of the
+  //    fresh fetch that runs on every login/foreground (authService.ts).
+  //  - `tasks` is refetched on every login/foreground the same way `game`
+  //    is, but isn't persisted — no relaunch-freshness requirement given
+  //    for it (unlike `game`), so it defaults to the same ephemeral
+  //    treatment as `chat`.
+  //  - `taskElements` is a per-task_id in-session cache (see
+  //    useTaskElements.ts) — "don't refetch on re-entering the same task"
+  //    only needs to survive navigation within a session, which plain
+  //    (non-persisted) Redux state already does.
+  whitelist: ['theme', 'game'],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

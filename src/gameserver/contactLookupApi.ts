@@ -39,3 +39,34 @@ export async function downloadContactByPhone(phone: string): Promise<ContactLook
     status: data.contact.status,
   };
 }
+
+/**
+ * Wraps /downloadContact — looks up a JewelChat user by their small
+ * integer userid (the JID's node — JIDs are minted client-side as
+ * `${userId}@${domain}`, see authService.ts). Same response shape as
+ * downloadContactByPhone, minus an `active` field (not present on this
+ * endpoint's response), so there's no activity check here.
+ */
+interface DownloadContactByIdResponse {
+  error: boolean;
+  message?: string;
+  contact?: {
+    id: number;
+    name: string | null;
+    phone: string;
+    status: string | null;
+  };
+}
+
+export async function downloadContactById(userId: number): Promise<ContactLookupResult | null> {
+  const { data } = await gameserverClient.post<DownloadContactByIdResponse>('/downloadContact', {
+    id: userId,
+  });
+  if (data.error || !data.contact) return null;
+  return {
+    jewelchatId: data.contact.id,
+    name: data.contact.name,
+    phone: data.contact.phone,
+    status: data.contact.status,
+  };
+}

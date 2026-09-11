@@ -1,6 +1,7 @@
+import { useLayoutEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useStyles, type ThemeColors, spacing, typography, Header } from '@components/design-system';
+import { useStyles, type ThemeColors, spacing, typography } from '@components/design-system';
 import { ContactAvatar } from '@components/shared/ContactAvatar';
 import type { RootScreenProps } from '@navigation/types';
 
@@ -9,9 +10,12 @@ export function ContactProfileScreen({ route, navigation }: RootScreenProps<'Con
   const { name, phone } = route.params;
   const styles = useStyles(makeStyles);
 
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: name ?? 'Contact' });
+  }, [navigation, name]);
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Header title={name ?? 'Contact'} onBack={() => navigation.goBack()} />
       <View style={styles.body}>
         <ContactAvatar jid={null} name={name} size={96} />
         <Text style={[typography.headlineMd, styles.name]}>{name ?? 'Unknown'}</Text>

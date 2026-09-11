@@ -27,12 +27,16 @@ export function useAppState(options: { onForeground?: () => void; onBackground?:
 
       if (cameFromBackground && nextState === 'active') {
         void authService.reconnectChat();
+        void authService.refreshGameState();
+        void authService.refreshTasks();
+        void authService.flushPickedJewels();
         onForeground?.();
       }
 
       if (/inactive|background/.test(nextState)) {
         void persistor.flush();
         void timeSyncService.recordBackgroundChatTime();
+        void authService.flushPickedJewels();
         store.dispatch(chatSessionReset());
         onBackground?.();
       }

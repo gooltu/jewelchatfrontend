@@ -1,4 +1,4 @@
-import { $msg, $pres } from 'react-native-strophe';
+import { $msg, $pres, Strophe } from 'react-native-strophe';
 import type { StropheConnection } from 'react-native-strophe';
 import {
   connect as stropheConnect,
@@ -10,21 +10,42 @@ import {
 } from '../chatserver/stropheClient';
 import type { PickerMediaItem } from '@components/design-system';
 import { registerStanzaHandlers } from '../chatserver/stropheEvents';
-import { buildDisplayedStanza } from '../chatserver/receiptStanzas';
-import { fetchArchivedMessages, type ArchivedMessage } from '../chatserver/messageArchive';
+import { buildDisplayedStanza, buildReceivedStanza } from '../chatserver/receiptStanzas';
+import {
+  fetchArchivedMessages,
+  fetchArchivedRoomMessages,
+  type ArchivedMessage,
+} from '../chatserver/messageArchive';
+import {
+  createGroupRoom,
+  renameGroupRoom,
+  setGroupAffiliation,
+  fetchGroupAffiliations,
+  fetchGroupConfig,
+  destroyGroupRoom,
+  fetchGroupRooms,
+} from '../chatserver/muclight';
 import {
   insertOutgoingMessage,
   insertIncomingMessage,
   markAllReadInRoom,
-  getMessagesPage,
+  markSubmitted,
+  markJewelPicked,
   getMessageBySenderMsgId,
+  getUnreadMessages,
 } from '../database/messageRepository';
 import {
   resetUnreadCount,
   updateLastMessagePreview,
   upsertContact,
   incrementUnreadCount,
+  getContactByJid,
+  getGroupContacts,
+  updateGroupName,
+  updateGroupAdminFlag,
+  deleteContact,
 } from '../database/contactRepository';
+import { replaceGroupMembers } from '../database/groupMemberRepository';
 import { enqueueOutgoingMessage, flushPendingMessages } from './syncService';
 import * as timeSyncService from './timeSyncService';
 import { store } from '../store';
@@ -34,7 +55,9 @@ import {
   typingReceived,
   type XmppConnectionStatus,
 } from '../store/slices/chatSlice';
-import { MSG_TYPE, type ChatMessage } from '../types/chat';
+import { jewelPicked } from '../store/slices/gameSlice';
+import { MSG_TYPE, randomJewelType, type ChatMessage } from '../types/chat';
+import { MAX_JEWEL_CAPACITY, sumPickableJewels } from '../types/game';
 
 /**
  * Orchestration layer between screens and gameserver/chatserver/db/redux.
@@ -102,19 +125,45 @@ function ensureStanzaHandlersRegistered(myJid: string): void {
     onTypingChanged: (chatRoomJid, isTyping) => {
       store.dispatch(typingReceived({ jid: chatRoomJid, isTyping }));
     },
+    onGroupRosterChanged: (groupJid) => {
+      void resolveMissingGroupName(groupJid);
+      notifyRoom(groupJid);
+    },
   });
   handlersRegisteredFor = connection;
+}
+
+/**
+ * A group `Contact` row created from a live `#affiliations` notification
+ * (stropheEvents.ts) doesn't know the room's name yet — filled in here via a
+ * best-effort `#configuration` get-IQ. No-ops if the name is already set
+ * (e.g. `createGroup` below already wrote the correct one, or a previous
+ * call to this same function already resolved it).
+ */
+async function resolveMissingGroupName(groupJid: string): Promise<void> {
+  const contact = await getContactByJid(groupJid);
+  if (!contact || contact.CONTACT_NAME) return;
+  try {
+    const { roomname } = await fetchGroupConfig(groupJid);
+    if (roomname) {
+      await updateGroupName(groupJid, roomname);
+      notifyRoom(groupJid);
+    }
+  } catch (error) {
+    if (__DEV__) console.log('[chatService] resolveMissingGroupName failed:', error);
+  }
 }
 
 async function handleIncomingMessageStored(message: ChatMessage): Promise<void> {
   if (!message.CHAT_ROOM_JID) return;
   notifyRoom(message.CHAT_ROOM_JID);
 
-  // Auto-mark-read if the conversation is currently open on screen.
+  // Auto-mark-read + send a <displayed/> receipt if the conversation is
+  // currently open on screen — without this, a message arriving while the
+  // room is already open only gets receipted the next time the screen is
+  // re-entered (setActiveConversation's own markConversationRead call).
   if (store.getState().chat.activeConversationJid === message.CHAT_ROOM_JID) {
-    await markAllReadInRoom(message.CHAT_ROOM_JID, Date.now());
-    await resetUnreadCount(message.CHAT_ROOM_JID);
-    notifyRoom(message.CHAT_ROOM_JID);
+    await markConversationRead(message.CHAT_ROOM_JID);
   }
 }
 
@@ -131,6 +180,7 @@ export function connect(jid: string, password: string): void {
         ensureStanzaHandlersRegistered(jid);
         broadcastPresence();
         void timeSyncService.syncServerTimeDelta();
+        void syncGroupRooms();
       }
     });
   }
@@ -170,6 +220,7 @@ export async function resyncAfterForeground(jid: string, password: string): Prom
     // since that only fires on an actual status transition to 'connected'.
     await flushPendingMessages();
     await downloadHistorySinceBackground();
+    await syncGroupRooms();
   } catch (error) {
     if (__DEV__) {
       console.log('[chatService] resyncAfterForeground failed:', error);
@@ -178,10 +229,72 @@ export async function resyncAfterForeground(jid: string, password: string): Prom
 }
 
 /**
+ * Reconciles local group `Contact` rows against the server's `disco#items`
+ * room list — the source of truth for "which rooms is this account actually
+ * still in." Catches renames/removals/destructions that happened while this
+ * device was offline (no live notification to replay), mirroring
+ * ChatServerConf/xmpp/app.js's own `refreshMucRooms`. Best-effort, matching
+ * every other step in resyncAfterForeground/connect's status-change handler.
+ */
+async function syncGroupRooms(): Promise<void> {
+  try {
+    const serverRooms = await fetchGroupRooms();
+    const serverJids = new Set(serverRooms.map((room) => room.jid));
+
+    const localGroups = await getGroupContacts();
+    const localJids = new Set(localGroups.map((contact) => contact.JID));
+
+    for (const room of serverRooms) {
+      if (!localJids.has(room.jid)) {
+        await upsertContact({
+          JEWELCHAT_ID: null,
+          JID: room.jid,
+          CONTACT_NUMBER: null,
+          CONTACT_NAME: room.name,
+          PHONEBOOK_CONTACT_NAME: null,
+          IS_GROUP: 1,
+          STATUS_MSG: null,
+          IS_REGIS: 1,
+          IS_GROUP_ADMIN: null,
+          IS_INVITED: 0,
+          IS_BLOCKED: 0,
+          IS_PHONEBOOK_CONTACT: 0,
+          LAST_MSG_CREATED_TIME: null,
+          MSG_TYPE: null,
+          MSG_TEXT: null,
+          SMALL_IMAGE: null,
+          IMAGE_PATH: null,
+        });
+      } else {
+        const existing = localGroups.find((contact) => contact.JID === room.jid);
+        if (room.name && existing && existing.CONTACT_NAME !== room.name) {
+          await updateGroupName(room.jid, room.name);
+        }
+      }
+      notifyRoom(room.jid);
+    }
+
+    for (const contact of localGroups) {
+      if (contact.JID && !serverJids.has(contact.JID)) {
+        await deleteContact(contact.JID);
+        notifyRoom(contact.JID);
+      }
+    }
+  } catch (error) {
+    if (__DEV__) console.log('[chatService] syncGroupRooms failed:', error);
+  }
+}
+
+/**
  * Downloads whatever arrived in the account's MAM archive since the last
  * backgrounding (timeSyncService.recordBackgroundChatTime's whole reason for
  * existing) and merges it into local SQLite. No-op if the app has never
  * backgrounded/connected before (startMs null) or there's no session JID.
+ * Queries the account's own (1-1) archive plus every known group room's own
+ * archive individually — MAM has no single "all my rooms" query, so each
+ * local group Contact gets its own `to`-addressed request. One room's query
+ * failing (e.g. it was destroyed, or the server rejects a non-occupant) is
+ * best-effort and must not block backfill for every other conversation.
  */
 async function downloadHistorySinceBackground(): Promise<void> {
   const startMs = await timeSyncService.getBackgroundChatTime();
@@ -190,6 +303,16 @@ async function downloadHistorySinceBackground(): Promise<void> {
 
   const archived: ArchivedMessage[] = [];
   await fetchArchivedMessages(startMs, myJid, (message) => archived.push(message));
+
+  const groups = await getGroupContacts();
+  for (const group of groups) {
+    if (!group.JID) continue;
+    try {
+      await fetchArchivedRoomMessages(startMs, group.JID, myJid, (message) => archived.push(message));
+    } catch (error) {
+      if (__DEV__) console.log(`[history] room MAM query failed for ${group.JID}:`, error);
+    }
+  }
 
   const touchedRooms = new Set<string>();
   for (const message of archived) {
@@ -202,8 +325,28 @@ async function downloadHistorySinceBackground(): Promise<void> {
   }
 }
 
-/** Returns true if newly stored (false if already present — dedup via SENDER_MSG_ID/CHAT_ROOM_JID/CREATOR_JID). */
+/**
+ * Returns true if this call changed local state (newly inserted, or an
+ * existing own row got reconciled — see the group self-reflection check
+ * below) — false if it was a pure no-op dedup hit.
+ */
 async function persistArchivedMessage(message: ArchivedMessage, myJid: string): Promise<boolean> {
+  // Our own group messages are stored locally under CREATOR_JID = myJid
+  // (bare — see sendTextMessage), never under the full room/nickname JID
+  // MAM returns them as. Mirrors stropheEvents.ts's live self-reflection
+  // check: reconcile against that row instead of falling through to the
+  // generic dedup lookup below, which would miss it (different CREATOR_JID)
+  // and insert a duplicate copy of a message we already have.
+  const isOwnGroupMessage =
+    message.isGroupMsg && Strophe.getResourceFromJid(message.creatorJid) === myJid;
+  if (isOwnGroupMessage) {
+    const ownRow = await getMessageBySenderMsgId(message.chatRoomJid, myJid, message.senderMsgId);
+    if (ownRow) {
+      if (!ownRow.IS_SUBMITTED) await markSubmitted(ownRow._ID, message.timestampMs);
+      return true;
+    }
+  }
+
   const existing = await getMessageBySenderMsgId(
     message.chatRoomJid,
     message.creatorJid,
@@ -211,7 +354,7 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
   );
   if (existing) return false;
 
-  const isOwnSentMessage = message.creatorJid === myJid;
+  const isOwnSentMessage = isOwnGroupMessage || message.creatorJid === myJid;
   await insertIncomingMessage({
     IS_GROUP_MSG: message.isGroupMsg ? 1 : 0,
     MSG_TYPE: message.msgType,
@@ -227,7 +370,7 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
     TIME_DELIVERED: message.timestampMs,
     TIME_CREATED: message.timestampMs,
     IS_ERROR: 0,
-    JEWEL_TYPE: null,
+    JEWEL_TYPE: isOwnSentMessage ? null : randomJewelType(),
     IS_JEWEL_PICKED: 0,
     MSG_TEXT: message.msgText,
     MEDIA_UPLOADED: 0,
@@ -239,6 +382,23 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
   });
 
   if (!isOwnSentMessage) await incrementUnreadCount(message.chatRoomJid);
+
+  // Matches stropheEvents.ts's live receipt behavior — a backfilled peer
+  // message hasn't been receipted yet (the live receive path that normally
+  // sends this never ran while we were backgrounded), so without this the
+  // sender's own device stays stuck showing "sent" forever even though
+  // we've now actually pulled the message down. Group messages are receipted
+  // directly to the real sender (the resource embedded in creatorJid — see
+  // the load-bearing protocol fact in the group-receipts plan), not the room.
+  if (!isOwnSentMessage && isConnected()) {
+    const receiptTo = message.isGroupMsg
+      ? Strophe.getResourceFromJid(message.creatorJid)
+      : message.chatRoomJid;
+    if (receiptTo) {
+      getConnection()?.send(buildReceivedStanza(receiptTo, message.senderMsgId).tree());
+    }
+  }
+
   await updateLastMessagePreview(message.chatRoomJid, {
     msgText: message.msgText,
     msgType: message.msgType,
@@ -360,26 +520,54 @@ export function setActiveConversation(jid: string | null): void {
 }
 
 /**
- * Marks a room read locally, then sends a single <displayed/> marker for
- * the most recent peer-authored message — per XEP-0333, one marker implies
- * "displayed, and everything before it too," so there's no need to send one
- * per row even though several rows may have just transitioned IS_READ 0→1.
+ * Marks a room read locally, then sends one <displayed/> marker per
+ * distinct sender among what was just marked read — per XEP-0333, one
+ * marker implies "displayed, and everything before it too" for that
+ * sender's thread, so only the latest per sender needs one. For 1-1 this is
+ * always exactly one sender (the peer), matching the prior behavior; a group
+ * room can have several, each unicast directly to that member (not the
+ * room) — same routing as the delivered receipt.
  */
 export async function markConversationRead(chatRoomJid: string): Promise<void> {
-  await markAllReadInRoom(chatRoomJid, Date.now());
-  await resetUnreadCount(chatRoomJid);
-
   const myJid = store.getState().auth.jid;
+  if (!myJid) return;
+
   const connection = getConnection();
-  if (myJid && connection && isConnected()) {
-    const { messages } = await getMessagesPage(chatRoomJid, { limit: 1 });
-    const latest = messages[0];
-    if (latest && latest.CREATOR_JID && latest.CREATOR_JID !== myJid && latest.SENDER_MSG_ID) {
-      connection.send(buildDisplayedStanza(chatRoomJid, latest.SENDER_MSG_ID).tree());
+  if (connection && isConnected()) {
+    const unread = await getUnreadMessages(chatRoomJid, myJid);
+    const latestBySender = new Map<string, ChatMessage>();
+    for (const msg of unread) {
+      if (!msg.CREATOR_JID || !msg.SENDER_MSG_ID) continue;
+      const current = latestBySender.get(msg.CREATOR_JID);
+      if (!current || msg.SEQUENCE > current.SEQUENCE) latestBySender.set(msg.CREATOR_JID, msg);
+    }
+    for (const msg of latestBySender.values()) {
+      const to = msg.IS_GROUP_MSG ? Strophe.getResourceFromJid(msg.CREATOR_JID as string) : chatRoomJid;
+      if (to && msg.SENDER_MSG_ID) connection.send(buildDisplayedStanza(to, msg.SENDER_MSG_ID).tree());
     }
   }
 
+  await markAllReadInRoom(chatRoomJid, myJid, Date.now());
+  await resetUnreadCount(chatRoomJid);
   notifyRoom(chatRoomJid);
+}
+
+/**
+ * Picks a message's jewel: queues it in Redux's game.pickedJewels (flushed
+ * later via authService.flushPickedJewels -> POST /bulkPickJewel) and
+ * persists IS_JEWEL_PICKED so it never resurfaces, even across reloads.
+ * Re-checks the MAX_JEWEL_CAPACITY cap defensively — the UI (useCanPickJewel)
+ * already gates the press, this is just a race-safety backstop.
+ */
+export async function pickJewel(message: ChatMessage): Promise<void> {
+  if (!message.JEWEL_TYPE || !message.CHAT_ROOM_JID) return;
+  const game = store.getState().game;
+  const totalOwned = sumPickableJewels(game.jewels);
+  if (totalOwned + (game.pickedJewels ?? []).length >= MAX_JEWEL_CAPACITY) return;
+
+  store.dispatch(jewelPicked({ type: message.JEWEL_TYPE }));
+  await markJewelPicked(message._ID, true);
+  notifyRoom(message.CHAT_ROOM_JID);
 }
 
 export interface SendTextMessageParams {
@@ -398,7 +586,6 @@ export interface SendTextMessageParams {
  */
 export async function sendTextMessage(params: SendTextMessageParams): Promise<ChatMessage> {
   const now = Date.now();
-  const senderMsgId = generateSenderMsgId();
 
   const message = await insertOutgoingMessage({
     IS_GROUP_MSG: params.isGroupMsg ? 1 : 0,
@@ -408,7 +595,6 @@ export async function sendTextMessage(params: SendTextMessageParams): Promise<Ch
     CHAT_ROOM_JID: params.chatRoomJid,
     CREATOR_JID: params.senderJid,
     SENDER_NAME: params.senderName,
-    SENDER_MSG_ID: senderMsgId,
     TIME_CREATED: now,
     JEWEL_TYPE: null,
     IS_JEWEL_PICKED: 0,
@@ -461,7 +647,6 @@ async function sendMediaMessage(
   placeholderText: string,
 ): Promise<ChatMessage> {
   const now = Date.now();
-  const senderMsgId = generateSenderMsgId();
 
   const message = await insertOutgoingMessage({
     IS_GROUP_MSG: params.isGroupMsg ? 1 : 0,
@@ -471,7 +656,6 @@ async function sendMediaMessage(
     CHAT_ROOM_JID: params.chatRoomJid,
     CREATOR_JID: params.senderJid,
     SENDER_NAME: params.senderName,
-    SENDER_MSG_ID: senderMsgId,
     TIME_CREATED: now,
     JEWEL_TYPE: null,
     IS_JEWEL_PICKED: 0,
@@ -506,6 +690,101 @@ export function sendTypingIndicator(chatRoomJid: string, isGroupMsg: boolean, is
   connection.send(stanza.tree());
 }
 
-function generateSenderMsgId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+/**
+ * Group management: thin wrappers over muclight.ts's protocol calls, each
+ * requiring a live connection (like sendTypingIndicator above) — unlike
+ * messages, group management has no offline queue; a screen calling one of
+ * these while disconnected sees the rejection directly.
+ */
+
+export interface CreateGroupParams {
+  name: string;
+  memberJids: string[];
+  myJid: string;
+}
+
+/**
+ * Creates the room, then persists the authoritative member list from the
+ * room-created notification (not a guess) and the room's `Contact` row.
+ * stropheEvents.ts's own `onGroupRosterChanged` handling will also see this
+ * same notification and upsert a (name-less) `Contact` row independently —
+ * harmless overlap, `upsertContact`'s `ON CONFLICT (JID)` just applies the
+ * correct name last.
+ */
+export async function createGroup(params: CreateGroupParams): Promise<{ roomJid: string }> {
+  const { roomJid, members } = await createGroupRoom({
+    roomName: params.name,
+    memberJids: params.memberJids,
+  });
+
+  await replaceGroupMembers(
+    roomJid,
+    members.map((member) => ({ memberJid: member.jid, affiliation: member.affiliation })),
+  );
+  await upsertContact({
+    JEWELCHAT_ID: null,
+    JID: roomJid,
+    CONTACT_NUMBER: null,
+    CONTACT_NAME: params.name,
+    PHONEBOOK_CONTACT_NAME: null,
+    IS_GROUP: 1,
+    STATUS_MSG: null,
+    IS_REGIS: 1,
+    IS_GROUP_ADMIN: 1,
+    IS_INVITED: 0,
+    IS_BLOCKED: 0,
+    IS_PHONEBOOK_CONTACT: 0,
+    LAST_MSG_CREATED_TIME: null,
+    MSG_TYPE: null,
+    MSG_TEXT: null,
+    SMALL_IMAGE: null,
+    IMAGE_PATH: null,
+  });
+  notifyRoom(roomJid);
+
+  return { roomJid };
+}
+
+export async function renameGroup(groupJid: string, name: string): Promise<void> {
+  await renameGroupRoom(groupJid, name);
+  await updateGroupName(groupJid, name);
+  notifyRoom(groupJid);
+}
+
+export async function inviteMember(groupJid: string, memberJid: string): Promise<void> {
+  await setGroupAffiliation(groupJid, memberJid, 'member');
+}
+
+export async function promoteMember(groupJid: string, memberJid: string): Promise<void> {
+  await setGroupAffiliation(groupJid, memberJid, 'owner');
+}
+
+export async function demoteMember(groupJid: string, memberJid: string): Promise<void> {
+  await setGroupAffiliation(groupJid, memberJid, 'member');
+}
+
+export async function removeMember(groupJid: string, memberJid: string): Promise<void> {
+  await setGroupAffiliation(groupJid, memberJid, 'none');
+}
+
+/** Self-kick — the mod_muc_light way to leave a room you're a member of. */
+export async function leaveGroup(groupJid: string, myJid: string): Promise<void> {
+  await setGroupAffiliation(groupJid, myJid, 'none');
+}
+
+export async function destroyGroup(groupJid: string): Promise<void> {
+  await destroyGroupRoom(groupJid);
+}
+
+/** Re-fetches the live roster from the server and replaces the local `GroupMembers` cache — used by GroupInfoScreen on mount. */
+export async function refreshGroupMembers(groupJid: string): Promise<void> {
+  const members = await fetchGroupAffiliations(groupJid);
+  await replaceGroupMembers(
+    groupJid,
+    members.map((member) => ({ memberJid: member.jid, affiliation: member.affiliation })),
+  );
+  const myJid = store.getState().auth.jid;
+  const myEntry = members.find((member) => member.jid.toLowerCase() === myJid?.toLowerCase());
+  if (myEntry) await updateGroupAdminFlag(groupJid, myEntry.affiliation === 'owner');
+  notifyRoom(groupJid);
 }

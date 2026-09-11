@@ -93,10 +93,52 @@ CREATE INDEX if not exists idx_reaction_message
   ON MessageReaction (CHAT_ROOM_JID, SENDER_MSG_ID);
 `;
 
+/**
+ * Per-member delivered/read tracking for group messages — 1-1 keeps using
+ * ChatMessage's own IS_DELIVERED/IS_READ flags directly; a group message's
+ * flags only flip once every current member has a row here (see
+ * chatService.reconcileGroupReceiptAggregate).
+ */
+export const CREATE_MESSAGE_RECEIPT_TABLE = `
+CREATE TABLE if not exists MessageReceipt (
+  _ID INTEGER PRIMARY KEY AUTOINCREMENT,
+  CHAT_ROOM_JID TEXT,
+  SENDER_MSG_ID TEXT,
+  MEMBER_JID TEXT,
+  IS_DELIVERED INTEGER DEFAULT 0,
+  TIME_DELIVERED INTEGER,
+  IS_READ INTEGER DEFAULT 0,
+  TIME_READ INTEGER,
+  UNIQUE (CHAT_ROOM_JID, SENDER_MSG_ID, MEMBER_JID)
+);
+`;
+
+export const CREATE_MESSAGE_RECEIPT_INDEX = `
+CREATE INDEX if not exists idx_message_receipt_lookup
+  ON MessageReceipt (CHAT_ROOM_JID, SENDER_MSG_ID);
+`;
+
+/**
+ * Caches a JID's resolved game-server identity (phone/name), independent of
+ * any group membership — survives GroupMembers roster refreshes/departures,
+ * unlike storing it on GroupMembers itself. See services/identityService.ts.
+ */
+export const CREATE_RESOLVED_IDENTITY_TABLE = `
+CREATE TABLE if not exists ResolvedIdentity (
+  JEWELCHAT_ID INTEGER,
+  JID TEXT UNIQUE,
+  PHONE TEXT,
+  NAME TEXT,
+  RESOLVED_TIME INTEGER
+);
+`;
+
 /** Table names, for repositories/tests that need to reference them by string. */
 export const TABLES = {
   Contact: 'Contact',
   ChatMessage: 'ChatMessage',
   GroupMembers: 'GroupMembers',
   MessageReaction: 'MessageReaction',
+  MessageReceipt: 'MessageReceipt',
+  ResolvedIdentity: 'ResolvedIdentity',
 } as const;

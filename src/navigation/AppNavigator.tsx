@@ -5,11 +5,16 @@ import { useTheme } from '@components/design-system';
 import { useAppSelector } from '@store/hooks';
 import { AuthNavigator } from './AuthNavigator';
 import { TabNavigator } from './TabNavigator';
+import { renderHeader } from './HeaderAdapter';
 import { buildNavigationTheme } from './navigationTheme';
 import { SplashScreen } from '@components/screens/auth/SplashScreen';
 import { ChatDetailScreen } from '@components/screens/chat/ChatDetailScreen';
 import { SelectContactScreen } from '@components/screens/chat/SelectContactScreen';
 import { ContactProfileScreen } from '@components/screens/chat/ContactProfileScreen';
+import { SelectGroupMembersScreen } from '@components/screens/chat/SelectGroupMembersScreen';
+import { CreateGroupDetailsScreen } from '@components/screens/chat/CreateGroupDetailsScreen';
+import { GroupInfoScreen } from '@components/screens/chat/GroupInfoScreen';
+import { TaskDetailScreen } from '@components/screens/game/TaskDetailScreen';
 import type { RootStackParamList } from './types';
 
 /** Exposed so notifications/pushNotifications.ts can navigate from outside React (deep links). */
@@ -25,11 +30,15 @@ const RootStack = createNativeStackNavigator<RootStackParamList>();
  */
 function SignedInNavigator() {
   return (
-    <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      <RootStack.Screen name="App" component={TabNavigator} />
+    <RootStack.Navigator screenOptions={{ header: renderHeader }}>
+      <RootStack.Screen name="App" component={TabNavigator} options={{ headerShown: false }} />
       <RootStack.Screen name="ChatDetail" component={ChatDetailScreen} />
       <RootStack.Screen name="SelectContact" component={SelectContactScreen} />
       <RootStack.Screen name="ContactProfile" component={ContactProfileScreen} />
+      <RootStack.Screen name="SelectGroupMembers" component={SelectGroupMembersScreen} />
+      <RootStack.Screen name="CreateGroupDetails" component={CreateGroupDetailsScreen} />
+      <RootStack.Screen name="GroupInfo" component={GroupInfoScreen} />
+      <RootStack.Screen name="TaskDetail" component={TaskDetailScreen} />
     </RootStack.Navigator>
   );
 }

@@ -15,7 +15,7 @@ function contactSortKey(contact: Contact): string {
 }
 
 /** "Active" = resolved, registered JewelChat user — see plan Assumption 1 (no real presence signal exists). */
-function isActive(contact: Contact): boolean {
+export function isActive(contact: Contact): boolean {
   return contact.IS_REGIS === 1 && contact.JEWELCHAT_ID != null;
 }
 

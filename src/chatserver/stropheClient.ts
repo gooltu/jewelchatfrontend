@@ -122,6 +122,19 @@ export function connect(jid: string, password: string): void {
     connection = new Strophe.Connection(resolveTransportUrl());
   }
 
+  if (__DEV__) {
+    // rawInput/rawOutput are Strophe's own hook points, called on every
+    // single stanza sent/received over the wire (confirmed directly in
+    // react-native-strophe/src/websocket.js) — logging here covers
+    // everything (messages, IQs, presence, receipts, MAM) without a
+    // separate console.log at every individual send call site. Re-assigned
+    // on every connect() call (not just when a fresh Connection is
+    // created) so a stale connection instance surviving a Fast Refresh
+    // still ends up with the hooks attached.
+    connection.rawInput = (data: string) => console.log('[strophe] RECV', data);
+    connection.rawOutput = (data: string) => console.log('[strophe] SEND', data);
+  }
+
   emitStatus('connecting');
   connection.connect(jid, password, (statusValue: number, condition?: string) => {
     const status = STATUS_BY_VALUE[statusValue] ?? 'error';

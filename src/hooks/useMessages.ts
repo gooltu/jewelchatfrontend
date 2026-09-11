@@ -46,7 +46,15 @@ export function useMessages(chatRoomJid: string | null, pageSize = 30): UseMessa
       beforeSequence: cursorRef.current ?? undefined,
       limit: pageSize,
     });
-    setMessages((prev) => [...prev, ...page.messages]);
+    // Deduped against `prev` (same idea as mergeNewest's _ID-keyed merge)
+    // rather than a bare append — a mergeNewest re-fetch of the newest page
+    // can race with an in-flight loadMore, and without this a message could
+    // land in both, producing a duplicate FlatList key.
+    setMessages((prev) => {
+      const existingIds = new Set(prev.map((m) => m._ID));
+      const deduped = page.messages.filter((m) => !existingIds.has(m._ID));
+      return [...prev, ...deduped];
+    });
     cursorRef.current = page.nextCursor;
     hasMoreRef.current = page.nextCursor !== null;
     setHasMore(hasMoreRef.current);

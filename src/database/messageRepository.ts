@@ -1,4 +1,5 @@
 import { getDatabase } from './index';
+import { MSG_TYPE } from '../types/chat';
 import type { ChatMessage, MessageStatus } from '../types/chat';
 
 /**
@@ -48,6 +49,19 @@ export async function getMessagesPage(
   };
 }
 
+/**
+ * Direct PK lookup — used for resolving a receipt's `id`, which for
+ * anything this app itself sent is the row's own `_ID` (see
+ * insertOutgoingMessage's doc comment), so it's globally unique on its own
+ * and doesn't need CHAT_ROOM_JID/CREATOR_JID to disambiguate the way
+ * getMessageBySenderMsgId does for incoming messages.
+ */
+export async function getMessageById(id: number): Promise<ChatMessage | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<ChatMessage>(`SELECT * FROM ChatMessage WHERE _ID = ?;`, [id]);
+  return row ?? null;
+}
+
 export async function getMessageBySenderMsgId(
   chatRoomJid: string,
   creatorJid: string,
@@ -75,12 +89,20 @@ async function getNextSequence(chatRoomJid: string): Promise<number> {
  * Offline-first outgoing insert: written to SQLite immediately with
  * IS_SUBMITTED = 0, before any network attempt. syncService is responsible
  * for sending it and calling markSubmitted/markError afterward.
+ *
+ * SENDER_MSG_ID is deliberately not caller-supplied: it's set to this row's
+ * own _ID once the insert returns it, so the wire-level XMPP message id
+ * (syncService sends `id: message.SENDER_MSG_ID`) is this device's local
+ * primary key. The receiver echoes that same id back in <received>/
+ * <displayed> receipts, and handleSelfEcho/receipt handling in
+ * stropheEvents.ts look the row back up by it.
  */
 export async function insertOutgoingMessage(
   message: Omit<
     ChatMessage,
     | '_ID'
     | 'SEQUENCE'
+    | 'SENDER_MSG_ID'
     | 'IS_SUBMITTED'
     | 'TIME_SUBMITTED'
     | 'IS_DELIVERED'
@@ -96,10 +118,10 @@ export async function insertOutgoingMessage(
   const result = await db.runAsync(
     `INSERT INTO ChatMessage (
       IS_GROUP_MSG, MSG_TYPE, CREATED_DATE, CREATED_TIME, CHAT_ROOM_JID, CREATOR_JID,
-      SENDER_NAME, SENDER_MSG_ID, IS_READ, IS_DELIVERED, IS_SUBMITTED, TIME_CREATED,
+      SENDER_NAME, IS_READ, IS_DELIVERED, IS_SUBMITTED, TIME_CREATED,
       IS_ERROR, JEWEL_TYPE, IS_JEWEL_PICKED, MSG_TEXT, MEDIA_UPLOADED, MEDIA_CLOUD,
       MEDIA_CLOUD_THUMBNAIL, SEQUENCE, IS_REPLY, REPLY_PARENT, IS_FORWARD
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       message.IS_GROUP_MSG,
       message.MSG_TYPE,
@@ -108,7 +130,6 @@ export async function insertOutgoingMessage(
       message.CHAT_ROOM_JID,
       message.CREATOR_JID,
       message.SENDER_NAME,
-      message.SENDER_MSG_ID,
       message.TIME_CREATED,
       message.JEWEL_TYPE,
       message.IS_JEWEL_PICKED,
@@ -122,6 +143,11 @@ export async function insertOutgoingMessage(
       message.IS_FORWARD,
     ],
   );
+
+  await db.runAsync(`UPDATE ChatMessage SET SENDER_MSG_ID = ? WHERE _ID = ?;`, [
+    String(result.lastInsertRowId),
+    result.lastInsertRowId,
+  ]);
 
   const inserted = await db.getFirstAsync<ChatMessage>(
     `SELECT * FROM ChatMessage WHERE _ID = ?;`,
@@ -181,6 +207,48 @@ export async function insertIncomingMessage(
   );
 }
 
+/**
+ * Persists a synthetic system-event row (group created/renamed/roster
+ * change) into the same table as real messages, so it interleaves
+ * chronologically via the normal SEQUENCE ordering — but with no
+ * CREATOR_JID/delivery semantics; the UI renders MSG_TEXT via SystemLabel
+ * instead of a MessageBubble for MSG_TYPE.SYSTEM rows. Deliberately does not
+ * touch Contact.LAST_MSG_CREATED_TIME/unread count — a group only earns its
+ * spot in the chat list once an actual message is sent in it.
+ */
+export async function insertSystemMessage(params: {
+  chatRoomJid: string;
+  senderMsgId: string;
+  text: string;
+  createdTime: number;
+}): Promise<void> {
+  await insertIncomingMessage({
+    IS_GROUP_MSG: 1,
+    MSG_TYPE: MSG_TYPE.SYSTEM,
+    CREATED_DATE: new Date(params.createdTime).toISOString().slice(0, 10),
+    CREATED_TIME: params.createdTime,
+    CHAT_ROOM_JID: params.chatRoomJid,
+    CREATOR_JID: null,
+    SENDER_NAME: null,
+    SENDER_MSG_ID: params.senderMsgId,
+    IS_READ: 1,
+    TIME_READ: null,
+    IS_DELIVERED: 1,
+    TIME_DELIVERED: params.createdTime,
+    TIME_CREATED: params.createdTime,
+    IS_ERROR: 0,
+    JEWEL_TYPE: null,
+    IS_JEWEL_PICKED: 0,
+    MSG_TEXT: params.text,
+    MEDIA_UPLOADED: 0,
+    MEDIA_CLOUD: null,
+    MEDIA_CLOUD_THUMBNAIL: null,
+    IS_REPLY: 0,
+    REPLY_PARENT: null,
+    IS_FORWARD: 0,
+  });
+}
+
 export async function markSubmitted(id: number, timeSubmitted: number): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
@@ -205,12 +273,36 @@ export async function markRead(id: number, timeRead: number): Promise<void> {
   ]);
 }
 
-export async function markAllReadInRoom(chatRoomJid: string, timeRead: number): Promise<void> {
+/**
+ * Marks the peer's messages in a room as read by us — deliberately excludes
+ * CREATOR_JID = myJid, since our own outgoing rows also start at IS_READ = 0
+ * and this must never flip to "seen" locally before the peer actually sends
+ * a <displayed/> marker for them.
+ */
+/**
+ * Peer-authored messages in a room not yet marked read — used to compose
+ * <displayed/> markers before markAllReadInRoom flips them, since a group
+ * room can have several distinct senders needing their own unicast marker
+ * (unlike 1-1, where there's only ever one).
+ */
+export async function getUnreadMessages(chatRoomJid: string, myJid: string): Promise<ChatMessage[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<ChatMessage>(
+    `SELECT * FROM ChatMessage WHERE CHAT_ROOM_JID = ? AND IS_READ = 0 AND CREATOR_JID != ?;`,
+    [chatRoomJid, myJid],
+  );
+}
+
+export async function markAllReadInRoom(
+  chatRoomJid: string,
+  myJid: string,
+  timeRead: number,
+): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
     `UPDATE ChatMessage SET IS_READ = 1, TIME_READ = ?
-     WHERE CHAT_ROOM_JID = ? AND IS_READ = 0;`,
-    [timeRead, chatRoomJid],
+     WHERE CHAT_ROOM_JID = ? AND IS_READ = 0 AND CREATOR_JID != ?;`,
+    [timeRead, chatRoomJid, myJid],
   );
 }
 
@@ -219,6 +311,15 @@ export async function markError(id: number, isError: boolean): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(`UPDATE ChatMessage SET IS_ERROR = ? WHERE _ID = ?;`, [
     isError ? 1 : 0,
+    id,
+  ]);
+}
+
+/** Set once a message's jewel has been tapped/picked (see chatService.pickJewel) — never reverts. */
+export async function markJewelPicked(id: number, picked: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`UPDATE ChatMessage SET IS_JEWEL_PICKED = ? WHERE _ID = ?;`, [
+    picked ? 1 : 0,
     id,
   ]);
 }

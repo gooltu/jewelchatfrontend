@@ -1,6 +1,7 @@
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import type { NativeStackScreenProps, NativeStackNavigationOptions } from '@react-navigation/native-stack';
+import type { BottomTabScreenProps, BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
+import type { HeaderProps } from '@components/design-system';
 
 export type AuthStackParamList = {
   Splash: undefined;
@@ -35,6 +36,18 @@ export type RootStackParamList = {
   ChatDetail: { chatRoomJid: string; title: string; isGroup: boolean };
   SelectContact: undefined;
   ContactProfile: { name: string | null; phone: number | null };
+  /**
+   * `mode: 'create'` (default) proceeds to CreateGroupDetails once the user
+   * taps Next. `mode: 'add'` (GroupInfoScreen's "Add members") instead
+   * invites each selected contact into `existingGroupJid` directly and pops
+   * back — no name step, the group already has one.
+   */
+  SelectGroupMembers:
+    | { mode?: 'create' }
+    | { mode: 'add'; existingGroupJid: string };
+  CreateGroupDetails: { members: { jid: string; name: string }[] };
+  GroupInfo: { chatRoomJid: string; title: string };
+  TaskDetail: { taskId: string };
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<
@@ -51,6 +64,11 @@ export type RootScreenProps<T extends keyof RootStackParamList> = NativeStackScr
   T
 >;
 export type TabScreenProps<T extends keyof TabParamList> = BottomTabScreenProps<TabParamList, T>;
+/** Composite so GameTab (a bare Tab.Screen, no nested stack) can still type-check navigating up to root-level screens like TaskDetail. */
+export type GameScreenProps = CompositeScreenProps<
+  BottomTabScreenProps<TabParamList, 'GameTab'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 declare global {
   namespace ReactNavigation {
@@ -61,3 +79,15 @@ declare global {
     interface RootParamList extends RootStackParamList {}
   }
 }
+
+/** Everything `Header` needs beyond `title`/`onBack` (which the navigator itself
+ * derives from `options.title` and the back-stack). Set via `navigation.setOptions`. */
+export type HeaderExtraProps = Partial<Omit<HeaderProps, 'title' | 'onBack'>>;
+
+/** `NativeStackNavigationOptions`/`BottomTabNavigationOptions` are `type` aliases in
+ * @react-navigation 7.x, not `interface`s, so they can't be declaration-merged —
+ * these intersections are the options shape actually passed to `Stack.Screen`/
+ * `Tab.Screen`/`navigation.setOptions` throughout `src/`. Matches NocturnalFlowRN's
+ * navigation/types.ts. */
+export type AppStackOptions = NativeStackNavigationOptions & { headerProps?: HeaderExtraProps };
+export type AppTabOptions = BottomTabNavigationOptions & { headerProps?: HeaderExtraProps };
