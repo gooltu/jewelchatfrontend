@@ -28,7 +28,10 @@ export function useAppState(options: { onForeground?: () => void; onBackground?:
       if (cameFromBackground && nextState === 'active') {
         void authService.reconnectChat();
         void authService.refreshGameState();
-        void authService.refreshTasks();
+        // Chained (not fire-and-forget alongside refreshTasks) so the
+        // overdue-bomb scan reads the just-refreshed task list, not
+        // whatever was already in Redux from before backgrounding.
+        void authService.refreshTasks().then(() => authService.checkForExplodedBombs());
         void authService.flushPickedJewels();
         onForeground?.();
       }

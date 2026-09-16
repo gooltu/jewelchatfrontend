@@ -76,3 +76,17 @@ export async function getBackgroundChatTime(): Promise<number | null> {
   const raw = await AsyncStorage.getItem(BACKGROUND_CHAT_TIME_KEY);
   return raw !== null ? Number(raw) : null;
 }
+
+/**
+ * Parses a "YYYY-MM-DD HH:mm:ss" backend timestamp (no timezone marker,
+ * confirmed UTC — e.g. GameTask.completed_at) explicitly as UTC. A bare
+ * `new Date(str)` on this non-ISO ("space" instead of "T", no "Z") format
+ * is interpreted as local time by some JS engines, which would silently
+ * shift a bomb countdown by the device's UTC offset.
+ */
+export function parseServerTimestamp(value: string): number {
+  const [datePart, timePart] = value.split(' ');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute, second] = timePart.split(':').map(Number);
+  return Date.UTC(year, month - 1, day, hour, minute, second);
+}

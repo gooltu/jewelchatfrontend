@@ -113,9 +113,15 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
   // Flushes any jewels picked in this conversation to the backend as soon
   // as the user navigates away — see authService.flushPickedJewels (also
   // triggered on app background/foreground, for the case this never fires
-  // because the app was killed instead).
+  // because the app was killed instead). Uses 'beforeRemove', not 'blur':
+  // confirmed via live testing that popping this screen (back button) fires
+  // 'beforeRemove' and unmounts reliably, but never dispatches 'blur' before
+  // this effect's own cleanup (which unsubscribes) already runs — 'blur'
+  // arrives too late (if at all) for a pop specifically, so it silently
+  // never fires.
   useEffect(() => {
-    return navigation.addListener('blur', () => {
+    return navigation.addListener('beforeRemove', () => {
+      if (__DEV__) console.log('[ChatDetailScreen] beforeRemove fired, flushing picked jewels');
       void authService.flushPickedJewels();
     });
   }, [navigation]);

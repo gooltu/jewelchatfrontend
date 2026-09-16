@@ -1,7 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
 import * as authApi from '../gameserver/authApi';
 import { bulkPickJewel } from '../gameserver/bulkPickJewelApi';
+import { explodeBomb as explodeBombApi } from '../gameserver/explodeBombApi';
 import { getGameState } from '../gameserver/gameStateApi';
+import { getNewTaskOnTaskCompletion } from '../gameserver/getNewTaskOnTaskCompletionApi';
 import { getTasks } from '../gameserver/tasksApi';
 import * as phoneAuthApi from '../gameserver/phoneAuthApi';
 import { setAuthTokenProvider, setUnauthorizedHandler, setRefreshHandler } from '../gameserver/client';
@@ -10,6 +12,7 @@ import { store } from '../store';
 import { authenticationStarted, authenticationFailed, signedIn, signedOut } from '../store/slices/authSlice';
 import { gameStateReceived, pickedJewelsCleared } from '../store/slices/gameSlice';
 import { tasksReceived } from '../store/slices/tasksSlice';
+import { getGameServerTimeDelta, parseServerTimestamp } from './timeSyncService';
 import * as chatService from './chatService';
 
 export const COUNTRY_CODE = '91';
@@ -103,12 +106,20 @@ export async function refreshGameState(): Promise<void> {
  * treatment as refreshGameState.
  */
 export async function refreshTasks(): Promise<void> {
-  if (store.getState().auth.status !== 'signedIn') return;
+  if (store.getState().auth.status !== 'signedIn') {
+    if (__DEV__) console.log('[refreshTasks] skipped, not signed in');
+    return;
+  }
   try {
     const tasks = await getTasks();
-    if (tasks) store.dispatch(tasksReceived(tasks));
-  } catch {
-    // best-effort
+    if (tasks) {
+      if (__DEV__) console.log('[refreshTasks] received', tasks.length, 'tasks');
+      store.dispatch(tasksReceived(tasks));
+    } else if (__DEV__) {
+      console.log('[refreshTasks] server returned error:true');
+    }
+  } catch (err) {
+    if (__DEV__) console.log('[refreshTasks] request failed', err);
   }
 }
 
@@ -137,6 +148,65 @@ export async function flushPickedJewels(): Promise<void> {
     // best-effort — queue stays put, retried on the next trigger
     if (__DEV__) console.log('[flushPickedJewels] request failed', err);
   }
+}
+
+const explodingTaskIds = new Set<number>();
+
+/**
+ * Best-effort, deduped per task row id: explodes a bomb task server-side
+ * and requests the next task. Deduped because the countdown driving this
+ * can be mounted on both GameScreen's card and TaskDetailScreen's top card
+ * simultaneously (React Navigation keeps prior stack screens mounted), and
+ * separately via the foreground/cold-launch catch-up scan
+ * (checkForExplodedBombs) — without this, the same explosion could fire
+ * twice. Deliberately does NOT refresh tasks/game state itself — the live
+ * (on-screen) callers show an explosion Lottie first and only refresh once
+ * the user dismisses it (see refreshAfterBombExplosion); the headless
+ * catch-up scan refreshes immediately since there's no UI to wait on.
+ * Returns whether the explosion was recorded server-side.
+ */
+export async function explodeBomb(taskId: number, id: number): Promise<boolean> {
+  if (explodingTaskIds.has(id)) return false;
+  explodingTaskIds.add(id);
+  try {
+    const ok = await explodeBombApi(taskId, id);
+    if (ok) {
+      void getNewTaskOnTaskCompletion();
+    } else if (__DEV__) {
+      console.log('[explodeBomb] server returned error:true', { taskId, id });
+    }
+    return ok;
+  } catch (err) {
+    if (__DEV__) console.log('[explodeBomb] failed', err);
+    return false;
+  } finally {
+    explodingTaskIds.delete(id);
+  }
+}
+
+/** Call once a bomb explosion's flow has fully settled (its Lottie dismissed, or immediately for the headless catch-up scan) to pull the updated task list + game state. */
+export async function refreshAfterBombExplosion(): Promise<void> {
+  await Promise.all([refreshGameState(), refreshTasks()]);
+}
+
+/**
+ * Call on app foreground/cold launch: explodes any bomb tasks whose
+ * deadline (completed_at, UTC) already passed while backgrounded/closed,
+ * so a user who never had the countdown on screen still gets the
+ * explosion applied. No Lottie here (nothing to show it to) — refreshes
+ * immediately after.
+ */
+export async function checkForExplodedBombs(): Promise<void> {
+  if (store.getState().auth.status !== 'signedIn') return;
+  const tasks = store.getState().tasks.tasks ?? [];
+  const delta = (await getGameServerTimeDelta()) ?? 0;
+  const gameNow = Date.now() + delta;
+  const overdue = tasks.filter(
+    (t) => t.is_bomb === 1 && !t.done && t.completed_at && parseServerTimestamp(t.completed_at) <= gameNow,
+  );
+  if (overdue.length === 0) return;
+  for (const t of overdue) await explodeBomb(t.task_id, t.id);
+  await refreshAfterBombExplosion();
 }
 
 /** Phone/OTP sign-up flow — see gameserver/phoneAuthApi.ts for the wire contract. */
@@ -263,7 +333,11 @@ export async function restoreSession(): Promise<void> {
   store.dispatch(signedIn({ userId, jid, displayName: 'defaultJCUname' }));
   chatService.connect(jid, refreshToken);
   void refreshGameState();
-  void refreshTasks();
+  // Chained (not fire-and-forget alongside itself) so a bomb whose deadline
+  // passed while the app was fully killed — not just backgrounded — still
+  // gets exploded on the very next cold launch, same as the
+  // background->foreground path in useAppState.ts.
+  void refreshTasks().then(() => checkForExplodedBombs());
 }
 
 /** Call on the app's background-to-active transition: no-ops if not signed in. */

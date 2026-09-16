@@ -25,6 +25,7 @@
     "expo-secure-store": "~57.0.2",
     "expo-sqlite": "~57.0.2",
     "expo-status-bar": "~57.0.1",
+    "lottie-react-native": "~7.3.8",
     "lucide-react-native": "^1.37.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

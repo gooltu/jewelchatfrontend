@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -9,6 +10,7 @@ import {
   SVGImageIcon,
 } from '@components/design-system';
 import { useJewelCounts } from '@hooks/useJewelCounts';
+import * as authService from '@services/authService';
 
 const crateIcon = require('../../../assets/jewelbox.png');
 
@@ -22,6 +24,15 @@ export function JewelStoreSheet({ visible, onClose }: JewelStoreSheetProps) {
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const jewels = useJewelCounts();
+
+  // On open: flush any jewels picked in chat but not yet synced (a no-op if
+  // game.pickedJewels is empty), then refresh game.jewels/game.scores
+  // unconditionally either way — not just on a successful flush — so the
+  // grid always reflects the latest server state.
+  useEffect(() => {
+    if (!visible) return;
+    void authService.flushPickedJewels().then(() => authService.refreshGameState());
+  }, [visible]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
