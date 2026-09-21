@@ -23,7 +23,7 @@ import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useWalletCounts } from '@hooks/useWalletCounts';
 import * as authService from '@services/authService';
 import * as gameService from '@services/gameService';
-import type { TabScreenProps, AppTabOptions } from '@navigation/types';
+import type { ProfileScreenProps, AppTabOptions } from '@navigation/types';
 import type { DiamondChecklistItem } from '@app-types/game';
 
 const THEME_MODES: ThemeMode[] = ['light', 'dark', 'system'];
@@ -47,7 +47,7 @@ function initialsFor(name: string | null | undefined): string {
     .join('');
 }
 
-export function SettingsScreen({ navigation }: TabScreenProps<'ProfileTab'>) {
+export function SettingsScreen({ navigation }: ProfileScreenProps) {
   const styles = useStyles(makeStyles);
   const colors = useThemeColors();
   const dispatch = useAppDispatch();
@@ -67,7 +67,7 @@ export function SettingsScreen({ navigation }: TabScreenProps<'ProfileTab'>) {
       headerProps: {
         actions: [
           { key: 'crates', label: `${wallet.diamonds} crates`, image: crateIcon, onPress: () => setJewelStoreVisible(true) },
-          { key: 'gems', label: `${wallet.coins} gems`, image: gemIcon },
+          { key: 'gems', label: `${wallet.coins} gems`, image: gemIcon, onPress: () => navigation.navigate('Factory') },
           { key: 'more', label: 'Profile options', icon: MoreVertical },
         ],
         gamebar,

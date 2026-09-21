@@ -2,16 +2,23 @@ import * as SecureStore from 'expo-secure-store';
 import * as authApi from '../gameserver/authApi';
 import { bulkPickJewel } from '../gameserver/bulkPickJewelApi';
 import { explodeBomb as explodeBombApi } from '../gameserver/explodeBombApi';
+import { getFactories } from '../gameserver/getFactoriesApi';
 import { getGameState } from '../gameserver/gameStateApi';
 import { getNewTaskOnTaskCompletion } from '../gameserver/getNewTaskOnTaskCompletionApi';
 import { getTasks } from '../gameserver/tasksApi';
+import { getUserFactory } from '../gameserver/getUserFactoryApi';
 import * as phoneAuthApi from '../gameserver/phoneAuthApi';
+import { startFactory as startFactoryApi } from '../gameserver/startFactoryApi';
+import { stopFactory as stopFactoryApi } from '../gameserver/stopFactoryApi';
+import { transferJewelsFromFactory as transferJewelsFromFactoryApi } from '../gameserver/transferJewelsFromFactoryApi';
 import { setAuthTokenProvider, setUnauthorizedHandler, setRefreshHandler } from '../gameserver/client';
 import { attemptRefreshAndRetry } from '../gameserver/tokenRefresh';
 import { store } from '../store';
 import { authenticationStarted, authenticationFailed, signedIn, signedOut } from '../store/slices/authSlice';
+import { factoriesReceived } from '../store/slices/factorySlice';
 import { gameStateReceived, pickedJewelsCleared } from '../store/slices/gameSlice';
 import { tasksReceived } from '../store/slices/tasksSlice';
+import { userFactoriesReceived, factoryStarted, factoryStopped } from '../store/slices/userFactorySlice';
 import { getGameServerTimeDelta, parseServerTimestamp } from './timeSyncService';
 import * as chatService from './chatService';
 
@@ -120,6 +127,112 @@ export async function refreshTasks(): Promise<void> {
     }
   } catch (err) {
     if (__DEV__) console.log('[refreshTasks] request failed', err);
+  }
+}
+
+/**
+ * Best-effort: fetches the Factory page's static catalog (factory
+ * definitions + material costs) and stores it in Redux — but only if it
+ * isn't already there. Unlike refreshGameState/refreshTasks, this is
+ * reference data (see factorySlice's doc comment), so once populated it's
+ * persisted across relaunches and never re-fetched.
+ */
+export async function refreshFactories(): Promise<void> {
+  if (store.getState().auth.status !== 'signedIn') return;
+  if (store.getState().factory.factories) return;
+  try {
+    const result = await getFactories();
+    if (result) store.dispatch(factoriesReceived(result));
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Best-effort: fetches the signed-in user's per-factory run state
+ * (is_on/start_time) and stores it in Redux. No-ops if not signed in;
+ * swallows failures — same fire-and-forget treatment as refreshTasks.
+ */
+export async function refreshUserFactory(): Promise<void> {
+  if (store.getState().auth.status !== 'signedIn') return;
+  try {
+    const userFactories = await getUserFactory();
+    if (userFactories) store.dispatch(userFactoriesReceived(userFactories));
+  } catch (err) {
+    if (__DEV__) console.log('[refreshUserFactory] failed', err);
+  }
+}
+
+/**
+ * POST /startFactory for the given factory. On success, dispatches
+ * factoryStarted so FactoryScreen's card flips to its running layout
+ * (rotating jewel, counting-down duration, Stop CTA) immediately, without
+ * waiting for a /getUserFactory round-trip. Returns whether it started.
+ */
+export async function startFactory(factoryId: number): Promise<boolean> {
+  try {
+    const startTime = await startFactoryApi(factoryId);
+    if (startTime === null) {
+      if (__DEV__) console.log('[startFactory] server returned error:true', { factoryId });
+      return false;
+    }
+    store.dispatch(
+      factoryStarted({ factoryId, startTime, userId: Number(store.getState().auth.userId) || 0 }),
+    );
+    // Starting a factory consumes its materials from the jewel store —
+    // refresh game.jewels so the reduced counts show up immediately, same
+    // as stopFactory/transferJewelsFromFactory below.
+    void refreshGameState();
+    return true;
+  } catch (err) {
+    if (__DEV__) console.log('[startFactory] failed', err);
+    return false;
+  }
+}
+
+/**
+ * POST /stopFactory — ends a running factory early (costs the diamonds
+ * shown on FactoryScreen's Stop CTA, per factory.diamond). On success,
+ * optimistically flips the local run-state to idle and refreshes game
+ * state (spent diamonds) + the canonical user-factory rows.
+ */
+export async function stopFactory(factoryId: number): Promise<boolean> {
+  try {
+    const ok = await stopFactoryApi(factoryId);
+    if (ok) {
+      store.dispatch(factoryStopped({ factoryId }));
+      void refreshGameState();
+      void refreshUserFactory();
+    } else if (__DEV__) {
+      console.log('[stopFactory] server returned error:true', { factoryId });
+    }
+    return ok;
+  } catch (err) {
+    if (__DEV__) console.log('[stopFactory] failed', err);
+    return false;
+  }
+}
+
+/**
+ * POST /transferJewelsFromFactory — claims a finished factory's output
+ * (FactoryScreen's "Transfer jewel to Jewel Store" CTA, shown once the
+ * countdown hits zero). Same optimistic-flip + refresh treatment as
+ * stopFactory.
+ */
+export async function transferJewelsFromFactory(factoryId: number): Promise<boolean> {
+  try {
+    const ok = await transferJewelsFromFactoryApi(factoryId);
+    if (ok) {
+      store.dispatch(factoryStopped({ factoryId }));
+      void refreshGameState();
+      void refreshUserFactory();
+    } else if (__DEV__) {
+      console.log('[transferJewelsFromFactory] server returned error:true', { factoryId });
+    }
+    return ok;
+  } catch (err) {
+    if (__DEV__) console.log('[transferJewelsFromFactory] failed', err);
+    return false;
   }
 }
 
@@ -254,6 +367,8 @@ export async function completeAuth(userId: number, displayName?: string): Promis
   }
   void refreshGameState();
   void refreshTasks();
+  void refreshFactories();
+  void refreshUserFactory();
 }
 
 export async function submitInitialDetails(
@@ -283,6 +398,8 @@ export async function login(username: string, password: string): Promise<void> {
     chatService.connect(user.jid, tokens.accessToken);
     void refreshGameState();
     void refreshTasks();
+    void refreshFactories();
+    void refreshUserFactory();
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Login failed';
     store.dispatch(authenticationFailed(message));
@@ -338,6 +455,8 @@ export async function restoreSession(): Promise<void> {
   // gets exploded on the very next cold launch, same as the
   // background->foreground path in useAppState.ts.
   void refreshTasks().then(() => checkForExplodedBombs());
+  void refreshFactories();
+  void refreshUserFactory();
 }
 
 /** Call on the app's background-to-active transition: no-ops if not signed in. */

@@ -15,6 +15,7 @@ import {
 import { JewelStoreSheet } from '@components/shared/JewelStoreSheet';
 import { useConversations } from '@hooks/useConversations';
 import { useGamebarStats } from '@hooks/useGamebarStats';
+import { useWalletCounts } from '@hooks/useWalletCounts';
 import type { ChatScreenProps, AppStackOptions } from '@navigation/types';
 import type { Conversation } from '@app-types/chat';
 
@@ -27,21 +28,22 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
   const [query, setQuery] = useState('');
   const [jewelStoreVisible, setJewelStoreVisible] = useState(false);
   const gamebar = useGamebarStats();
+  const wallet = useWalletCounts();
 
   useLayoutEffect(() => {
     const options: AppStackOptions = {
       title: 'Chats',
       headerProps: {
         actions: [
-          { key: 'crates', label: '3 crates', image: crateIcon, onPress: () => setJewelStoreVisible(true) },
-          { key: 'gems', label: '24 gems', image: gemIcon },
+          { key: 'crates', label: `${wallet.diamonds} crates`, image: crateIcon, onPress: () => setJewelStoreVisible(true) },
+          { key: 'gems', label: `${wallet.coins} gems`, image: gemIcon, onPress: () => navigation.navigate('Factory') },
           { key: 'more', label: 'Chats options', icon: MoreVertical },
         ],
         gamebar,
       },
     };
     navigation.setOptions(options);
-  }, [navigation, gamebar]);
+  }, [navigation, wallet, gamebar]);
 
   const filtered = conversations.filter((c) =>
     (c.CONTACT_NAME ?? c.PHONEBOOK_CONTACT_NAME ?? c.JID ?? '')

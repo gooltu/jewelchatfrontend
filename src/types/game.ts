@@ -114,3 +114,40 @@ export interface PickedJewel {
 
 /** A user's total jewel count (sum of game.jewels + queued game.pickedJewels) may never reach this. */
 export const MAX_JEWEL_CAPACITY = 25;
+
+/** Real gameserver /getFactories response row — a factory's static definition (catalog data, not per-user state). */
+export interface FactoryDefinition {
+  factory_id: number;
+  jeweltype_id: number;
+  count: number;
+  level: number;
+  /** Diamonds required to stop a running factory early (FactoryScreen's Stop button label). */
+  diamond: number;
+  /** Seconds. */
+  duration: number;
+}
+
+/** Real gameserver /getFactories response row — one jewel material a factory consumes, keyed by factory_id. */
+export interface FactoryMaterial {
+  id: number;
+  factory_id: number;
+  jeweltype_id: number;
+  count: number;
+}
+
+/**
+ * A user's per-factory run state, keyed by factory_id — normalized for
+ * Redux, NOT the raw /getUserFactory wire shape (see getUserFactoryApi.ts,
+ * which parses each row's UTC "YYYY-MM-DD HH:mm:ss" start_time string into
+ * this epoch-ms number so FactoryScreen's countdown can treat every
+ * source of start_time — the initial fetch and a fresh POST /startFactory
+ * response — identically).
+ */
+export interface UserFactory {
+  id: number;
+  factory_id: number;
+  user_id: number;
+  is_on: number;
+  /** Epoch milliseconds. */
+  start_time: number;
+}

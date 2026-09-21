@@ -17,6 +17,7 @@ import { TaskExplosionOverlay } from '@components/shared/TaskExplosionOverlay';
 import { useBombCountdown } from '@hooks/useBombCountdown';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useGameTasks } from '@hooks/useGameTasks';
+import { useWalletCounts } from '@hooks/useWalletCounts';
 import * as authService from '@services/authService';
 import * as gameService from '@services/gameService';
 import type { GameScreenProps, AppTabOptions } from '@navigation/types';
@@ -29,7 +30,7 @@ const bombIcon = require('../../../../assets/Bomb.png');
 export function GameScreen({ navigation }: GameScreenProps) {
   const styles = useStyles(makeStyles);
   const colors = useThemeColors();
-  const stats = useMemo(() => gameService.getGameStats(), []);
+  const wallet = useWalletCounts();
   const pointTasks = useGameTasks();
   const giftTasks = useMemo(() => gameService.getGiftTasks(), []);
   const gamebar = useGamebarStats();
@@ -46,15 +47,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
       title: 'Game',
       headerProps: {
         actions: [
-          { key: 'crates', label: `${stats.diamonds} crates`, image: crateIcon, onPress: () => setJewelStoreVisible(true) },
-          { key: 'gems', label: `${stats.coins} gems`, image: gemIcon },
+          { key: 'crates', label: `${wallet.diamonds} crates`, image: crateIcon, onPress: () => setJewelStoreVisible(true) },
+          { key: 'gems', label: `${wallet.coins} gems`, image: gemIcon, onPress: () => navigation.navigate('Factory') },
           { key: 'more', label: 'Game options', icon: MoreVertical },
         ],
         gamebar,
       },
     };
     navigation.setOptions(options);
-  }, [navigation, stats, gamebar]);
+  }, [navigation, wallet, gamebar]);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>

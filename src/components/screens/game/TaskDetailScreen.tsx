@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 import { Check, Clock, Info, X } from 'lucide-react-native';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,11 +20,11 @@ import { TaskExplosionOverlay } from '@components/shared/TaskExplosionOverlay';
 import { useBombCountdown } from '@hooks/useBombCountdown';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useTaskElements } from '@hooks/useTaskElements';
+import { useWalletCounts } from '@hooks/useWalletCounts';
 import { useAppSelector } from '@store/hooks';
 import { getNewTaskOnTaskCompletion } from '@gameserver/getNewTaskOnTaskCompletionApi';
 import { redeemTask } from '@gameserver/redeemTaskApi';
 import * as authService from '@services/authService';
-import * as gameService from '@services/gameService';
 import type { RootScreenProps, AppStackOptions } from '@navigation/types';
 import type { GameTask } from '@app-types/game';
 
@@ -42,7 +42,7 @@ interface JewelRow {
 export function TaskDetailScreen({ route, navigation }: RootScreenProps<'TaskDetail'>) {
   const styles = useStyles(makeStyles);
   const colors = useThemeColors();
-  const stats = useMemo(() => gameService.getGameStats(), []);
+  const wallet = useWalletCounts();
   const gamebar = useGamebarStats();
   const [jewelStoreVisible, setJewelStoreVisible] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
@@ -67,14 +67,14 @@ export function TaskDetailScreen({ route, navigation }: RootScreenProps<'TaskDet
       title: 'Task Detail',
       headerProps: {
         actions: [
-          { key: 'crates', label: `${stats.diamonds} crates`, image: crateIcon, onPress: () => setJewelStoreVisible(true) },
-          { key: 'gems', label: `${stats.coins} gems`, image: gemIcon },
+          { key: 'crates', label: `${wallet.diamonds} crates`, image: crateIcon, onPress: () => setJewelStoreVisible(true) },
+          { key: 'gems', label: `${wallet.coins} gems`, image: gemIcon, onPress: () => navigation.navigate('Factory') },
         ],
         gamebar,
       },
     };
     navigation.setOptions(options);
-  }, [navigation, stats, gamebar]);
+  }, [navigation, wallet, gamebar]);
 
   if (!task) {
     return (

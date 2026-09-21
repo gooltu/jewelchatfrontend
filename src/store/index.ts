@@ -14,18 +14,24 @@ import devToolsEnhancer from 'redux-devtools-expo-dev-plugin';
 
 import authReducer from './slices/authSlice';
 import chatReducer from './slices/chatSlice';
+import factoryReducer from './slices/factorySlice';
 import gameReducer from './slices/gameSlice';
+import loadingReducer from './slices/loadingSlice';
 import taskElementsReducer from './slices/taskElementsSlice';
 import tasksReducer from './slices/tasksSlice';
 import themeReducer from './slices/themeSlice';
+import userFactoryReducer from './slices/userFactorySlice';
 
 const rootReducer = combineReducers({
   auth: authReducer,
   chat: chatReducer,
+  factory: factoryReducer,
   game: gameReducer,
+  loading: loadingReducer,
   taskElements: taskElementsReducer,
   tasks: tasksReducer,
   theme: themeReducer,
+  userFactory: userFactoryReducer,
 });
 
 const persistConfig = {
@@ -53,7 +59,21 @@ const persistConfig = {
   //    useTaskElements.ts) — "don't refetch on re-entering the same task"
   //    only needs to survive navigation within a session, which plain
   //    (non-persisted) Redux state already does.
-  whitelist: ['theme', 'game'],
+  //  - `factory` (the /getFactories catalog: definitions + material costs)
+  //    IS persisted, like `game` — it's static reference data, not per-user
+  //    state, so authService.refreshFactories fetches it once ever (skipped
+  //    whenever it's already populated) rather than refetching on every
+  //    login/foreground.
+  //  - `userFactory` (the /getUserFactory per-user is_on/start_time rows)
+  //    is the per-user counterpart to `factory` and gets the same ephemeral
+  //    treatment as `tasks` — refetched every login/foreground, not
+  //    persisted.
+  //  - `loading` (FloatingLoadingPanel's activeCount/message — see
+  //    loadingService.ts) is transient by definition: persisting a stuck
+  //    "loading" state across an app relaunch would show a permanent
+  //    spinner for a request that already finished or was killed with the
+  //    app.
+  whitelist: ['theme', 'game', 'factory'],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
@@ -68,6 +88,15 @@ export const store = configureStore({
         // the redux-persist + RTK integration docs.
         ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
       },
+      // Dev-only mutation-detection middleware (deep-clones + diffs the
+      // whole state tree around every dispatch) — disabled entirely in
+      // production, so this only affects local dev console noise. Default
+      // warnAfter (32ms) is tuned for small web app states; this app's
+      // combined state (chat/game/tasks/factory/userFactory/etc.) routinely
+      // exceeds that on-device, per RTK's own docs' recommended remedy for
+      // this exact warning: raise the threshold rather than disable the
+      // check and lose real accidental-mutation detection.
+      immutableCheck: { warnAfter: 128 },
     }),
   // Expo's own DevTools plugin (works in Expo Go, no dev-client needed) —
   // opened via `Shift+M` in the `npx expo start` terminal. Dev-only: the

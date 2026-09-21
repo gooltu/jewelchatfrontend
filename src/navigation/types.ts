@@ -48,6 +48,7 @@ export type RootStackParamList = {
   CreateGroupDetails: { members: { jid: string; name: string }[] };
   GroupInfo: { chatRoomJid: string; title: string };
   TaskDetail: { taskId: string };
+  Factory: undefined;
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<
@@ -67,6 +68,11 @@ export type TabScreenProps<T extends keyof TabParamList> = BottomTabScreenProps<
 /** Composite so GameTab (a bare Tab.Screen, no nested stack) can still type-check navigating up to root-level screens like TaskDetail. */
 export type GameScreenProps = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, 'GameTab'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
+/** Composite so ProfileTab (a bare Tab.Screen, no nested stack) can still type-check navigating up to root-level screens like Factory. */
+export type ProfileScreenProps = CompositeScreenProps<
+  BottomTabScreenProps<TabParamList, 'ProfileTab'>,
   NativeStackScreenProps<RootStackParamList>
 >;
 

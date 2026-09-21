@@ -86,7 +86,24 @@ export async function getBackgroundChatTime(): Promise<number | null> {
  */
 export function parseServerTimestamp(value: string): number {
   const [datePart, timePart] = value.split(' ');
+  if (!datePart || !timePart) return NaN;
   const [year, month, day] = datePart.split('-').map(Number);
   const [hour, minute, second] = timePart.split(':').map(Number);
   return Date.UTC(year, month - 1, day, hour, minute, second);
+}
+
+/**
+ * Factory endpoints (/startFactory, /getUserFactory) have been observed
+ * sending start_time in several different shapes: a numeric string of
+ * epoch seconds (e.g. "1789456675"), a full ISO-8601 string (e.g.
+ * "2026-09-21T07:26:39.000Z" — has an explicit "T"/"Z", so it's unambiguous
+ * for a bare `new Date()` unlike the non-ISO format below), or the same
+ * "YYYY-MM-DD HH:mm:ss" format parseServerTimestamp handles elsewhere in
+ * the app. Tries each in turn; never throws — returns NaN if none match,
+ * so callers can treat that the same as any other failed fetch.
+ */
+export function parseFlexibleServerTimestamp(value: string): number {
+  if (/^\d+$/.test(value)) return Number(value) * 1000;
+  if (value.includes('T')) return new Date(value).getTime();
+  return parseServerTimestamp(value);
 }

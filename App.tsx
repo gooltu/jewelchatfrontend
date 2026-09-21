@@ -9,6 +9,7 @@ import { ThemeProvider, useTheme, useThemeColors, useAppFonts } from '@component
 import { store, persistor } from '@store/index';
 import { useAppSelector } from '@store/hooks';
 import { AppNavigator } from '@navigation/AppNavigator';
+import { FloatingLoadingPanel } from '@components/shared/FloatingLoadingPanel';
 import { getDatabase } from '@database/index';
 import * as authService from '@services/authService';
 // expo-notifications disabled for early development — see app.config.ts.
@@ -64,6 +65,7 @@ function RootContent() {
   return (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
       <AppNavigator />
+      <FloatingLoadingPanel />
       <StatusBar style="auto" />
     </View>
   );

@@ -15,6 +15,7 @@ import { SelectGroupMembersScreen } from '@components/screens/chat/SelectGroupMe
 import { CreateGroupDetailsScreen } from '@components/screens/chat/CreateGroupDetailsScreen';
 import { GroupInfoScreen } from '@components/screens/chat/GroupInfoScreen';
 import { TaskDetailScreen } from '@components/screens/game/TaskDetailScreen';
+import { FactoryScreen } from '@components/screens/game/FactoryScreen';
 import type { RootStackParamList } from './types';
 
 /** Exposed so notifications/pushNotifications.ts can navigate from outside React (deep links). */
@@ -39,6 +40,7 @@ function SignedInNavigator() {
       <RootStack.Screen name="CreateGroupDetails" component={CreateGroupDetailsScreen} />
       <RootStack.Screen name="GroupInfo" component={GroupInfoScreen} />
       <RootStack.Screen name="TaskDetail" component={TaskDetailScreen} />
+      <RootStack.Screen name="Factory" component={FactoryScreen} />
     </RootStack.Navigator>
   );
 }

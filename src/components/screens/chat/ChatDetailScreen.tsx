@@ -405,7 +405,18 @@ function formatTime(epochMs: number | null): string {
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.surface },
-    toastWrap: { paddingHorizontal: spacing.gutterChat, paddingBottom: spacing.sm },
+    // Floats over the message list rather than sitting in-flow (was between
+    // the list and ChatInputBar) so showing/dismissing it never shifts
+    // ChatInputBar or the list's scroll position.
+    toastWrap: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      paddingHorizontal: spacing.gutterChat,
+      paddingTop: spacing.sm,
+    },
     list: { flex: 1, paddingHorizontal: spacing.gutterChat },
     // Inverted list: paddingTop here renders as the gap at the visual
     // *bottom* (between the newest bubble and ChatInputBar), not the top.
