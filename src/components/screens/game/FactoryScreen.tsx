@@ -32,7 +32,7 @@ import * as authService from '@services/authService';
 import { withLoading } from '@services/loadingService';
 import { useAppSelector } from '@store/hooks';
 import type { RootScreenProps, AppStackOptions } from '@navigation/types';
-import { PICKABLE_JEWEL_TYPES, type FactoryDefinition, type UserFactory } from '@app-types/game';
+import { PICKABLE_JEWEL_TYPES, resolveJewelIcon, type FactoryDefinition, type UserFactory } from '@app-types/game';
 
 const crateIcon = require('../../../../assets/jewelbox.png');
 
@@ -47,24 +47,6 @@ const ROTATION_DURATION_MS = 4000;
 /** factory.count is always 6, 3, or 1 — a fixed 3-wide grid width makes 6 wrap into two rows and 3 (or 1) sit on one, per spec. */
 const JEWEL_TILE_SIZE = 64;
 const JEWEL_GRID_COLUMNS = 3;
-
-/**
- * The design-system's svgIcons set only defines `j3`-`j17` (see
- * PICKABLE_JEWEL_TYPES) plus `diamond`/`coin`/`xp`/`logo` — a jeweltype_id
- * outside that range has no icon and would crash SVGImageIcon
- * ("Element type is invalid... got undefined") if passed straight through
- * as `j${jeweltypeId}`. Resolve defensively instead of trusting the
- * backend's jeweltype_id is always in the pickable 3-17 range.
- */
-function resolveJewelIcon(jeweltypeId: number): SVGIconName | null {
-  if (jeweltypeId === 0) return 'diamond';
-  if (jeweltypeId === 1) return 'coin';
-  if ((PICKABLE_JEWEL_TYPES as readonly number[]).includes(jeweltypeId)) {
-    return `j${jeweltypeId}` as SVGIconName;
-  }
-  if (__DEV__) console.log('[FactoryScreen] no icon for jeweltype_id', jeweltypeId);
-  return null;
-}
 
 /**
  * Pushed from every tab header's "gems" action. Lists every factory from

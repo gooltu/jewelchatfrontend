@@ -33,6 +33,12 @@ export function useAppState(options: { onForeground?: () => void; onBackground?:
         // whatever was already in Redux from before backgrounding.
         void authService.refreshTasks().then(() => authService.checkForExplodedBombs());
         void authService.flushPickedJewels();
+        // Both already skip the fetch entirely if already populated (see
+        // their doc comments in authService.ts) — cheap to call on every
+        // foreground, not just cold launch, per this feature's explicit
+        // "loads or becomes active" requirement.
+        void authService.refreshAchievements();
+        void authService.refreshUserAchievements();
         onForeground?.();
       }
 

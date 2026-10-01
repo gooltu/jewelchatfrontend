@@ -1,16 +1,6 @@
 import type { LucideIcon } from 'lucide-react-native';
 import type { SVGIconName } from '@components/design-system';
 
-/** Level/XP/currency summary shown in the shared Header's `gamebar` + action
- * icons on the Game and Profile tabs. */
-export interface GameStats {
-  level: number;
-  xpCurrent: number;
-  xpMax: number;
-  coins: number;
-  diamonds: number;
-}
-
 /** One "WIN CASH AND GIFTS" card on the Game tab — a product prize (no real
  * product photography yet, so a placeholder glyph stands in for the image)
  * or a cash prize (rupee amount instead). */
@@ -82,6 +72,23 @@ export function sumPickableJewels(jewels: JewelEntry[] | null | undefined): numb
     .reduce((sum, jewel) => sum + jewel.count, 0);
 }
 
+/**
+ * The design-system's svgIcons set only defines `j3`-`j17` (see
+ * PICKABLE_JEWEL_TYPES) plus `diamond`/`coin`/`xp`/`logo` — a jeweltype_id
+ * outside that range has no icon and would crash SVGImageIcon ("Element
+ * type is invalid... got undefined") if passed straight through as
+ * `j${jeweltypeId}`. Resolve defensively instead of trusting a jeweltype_id
+ * is always in the pickable 3-17 range. Shared by FactoryScreen.tsx and
+ * useAchievementChecklist.ts.
+ */
+export function resolveJewelIcon(jeweltypeId: number): SVGIconName | null {
+  if (jeweltypeId === 0) return 'diamond';
+  if (jeweltypeId === 1) return 'coin';
+  const pickableTypes: readonly number[] = PICKABLE_JEWEL_TYPES;
+  if (pickableTypes.includes(jeweltypeId)) return `j${jeweltypeId}` as SVGIconName;
+  return null;
+}
+
 export interface GameState {
   scores: GameScores;
   jewels: JewelEntry[];
@@ -150,4 +157,41 @@ export interface UserFactory {
   is_on: number;
   /** Epoch milliseconds. */
   start_time: number;
+}
+
+/** Real gameserver /getAchievements response row — an achievement's static definition (catalog data, not per-user state). `note` is carried through but not yet surfaced anywhere in the UI. */
+export interface Achievement {
+  achievement_id: number;
+  /** Diamond reward for completing this achievement. */
+  diamond: number;
+  text: string;
+  note: string;
+}
+
+/**
+ * Real gameserver /getUsersAchievement response row — the signed-in user's
+ * progress on one achievement, keyed by achievement_id. `level` is NOT a
+ * 0-1 fraction — see SettingsScreen.tsx's computeAchievementProgress for
+ * how it becomes the checklist row's target/denominator (differs by
+ * achievement_id; some current_value sources aren't wired up yet).
+ */
+export interface UserAchievement {
+  id: number;
+  achievement_id: number;
+  user_id: number;
+  level: number;
+}
+
+/**
+ * A referred user (the "children" array — see useAchievementChecklist.ts's
+ * doc comment for why achievements 3-17 need this: their current_value is
+ * a count of children whose level has reached a per-achievement
+ * threshold). No backend flow wired up yet — childrenSlice.ts starts as an
+ * empty array until the referrals feature lands.
+ */
+export interface Child {
+  id: number;
+  phone: string;
+  name: string;
+  level: number;
 }

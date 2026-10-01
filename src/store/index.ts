@@ -12,25 +12,33 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import devToolsEnhancer from 'redux-devtools-expo-dev-plugin';
 
+import achievementsReducer from './slices/achievementsSlice';
 import authReducer from './slices/authSlice';
 import chatReducer from './slices/chatSlice';
+import childrenReducer from './slices/childrenSlice';
 import factoryReducer from './slices/factorySlice';
 import gameReducer from './slices/gameSlice';
+import inviteesReducer from './slices/inviteesSlice';
 import loadingReducer from './slices/loadingSlice';
 import taskElementsReducer from './slices/taskElementsSlice';
 import tasksReducer from './slices/tasksSlice';
 import themeReducer from './slices/themeSlice';
+import userAchievementsReducer from './slices/userAchievementsSlice';
 import userFactoryReducer from './slices/userFactorySlice';
 
 const rootReducer = combineReducers({
+  achievements: achievementsReducer,
   auth: authReducer,
   chat: chatReducer,
+  children: childrenReducer,
   factory: factoryReducer,
   game: gameReducer,
+  invitees: inviteesReducer,
   loading: loadingReducer,
   taskElements: taskElementsReducer,
   tasks: tasksReducer,
   theme: themeReducer,
+  userAchievements: userAchievementsReducer,
   userFactory: userFactoryReducer,
 });
 
@@ -73,7 +81,19 @@ const persistConfig = {
   //    "loading" state across an app relaunch would show a permanent
   //    spinner for a request that already finished or was killed with the
   //    app.
-  whitelist: ['theme', 'game', 'factory'],
+  //  - `achievements` (the /getAchievements catalog: definitions + diamond
+  //    rewards) IS persisted, like `factory` — static reference data,
+  //    fetched once ever (see authService.refreshAchievements).
+  //  - `userAchievements` (the /getUsersAchievement per-achievement level
+  //    rows) is NOT persisted — refetched once per cold launch, but (per an
+  //    explicit choice for this feature, unlike `userFactory`) skipped on
+  //    every foreground within the same session if already present, see
+  //    authService.refreshUserAchievements.
+  //  - `invitees`/`children` are placeholders (empty arrays, no backend
+  //    flow wired up yet — see childrenSlice.ts/inviteesSlice.ts) for
+  //    achievements 1 and 3-17's current_value. Persisted so whatever gets
+  //    populated into them later survives a relaunch, same as `game`.
+  whitelist: ['theme', 'game', 'factory', 'achievements', 'invitees', 'children'],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

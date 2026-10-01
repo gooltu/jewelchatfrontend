@@ -5,10 +5,22 @@ import { env } from '../config/env';
  * REST client for the game server (auth, profile, non-realtime ops).
  * Distinct from chatserver/ (XMPP over WebSocket) — this is plain HTTP.
  */
+/**
+ * Cache-Control/Pragma/Expires explicitly disable caching of every request
+ * — every endpoint here is either a mutation or state that changes from
+ * other flows in this app, so a stale response served by an intermediary
+ * (a CDN/reverse proxy in front of the API, or the OS's own HTTP cache) is
+ * always wrong, never a valid optimization.
+ */
 export const gameserverClient = axios.create({
   baseURL: env.gameserverUrl,
   timeout: 15000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  },
 });
 
 /**

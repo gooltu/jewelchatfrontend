@@ -49,6 +49,7 @@ export type RootStackParamList = {
   GroupInfo: { chatRoomJid: string; title: string };
   TaskDetail: { taskId: string };
   Factory: undefined;
+  Referrals: undefined;
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<

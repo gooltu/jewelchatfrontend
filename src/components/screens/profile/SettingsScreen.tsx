@@ -1,7 +1,7 @@
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { Gift, MoreVertical, Share2, Trophy, Wallet } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useStyles,
@@ -14,15 +14,18 @@ import {
   SVGImageIcon,
   spacing,
   radius,
+  states,
   typography,
 } from '@components/design-system';
 import { useAppDispatch, useAppSelector } from '@store/hooks';
 import { setThemeMode, type ThemeMode } from '@store/slices/themeSlice';
 import { JewelStoreSheet } from '@components/shared/JewelStoreSheet';
+import { useAchievementChecklist } from '@hooks/useAchievementChecklist';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useWalletCounts } from '@hooks/useWalletCounts';
 import * as authService from '@services/authService';
 import * as gameService from '@services/gameService';
+import { initialsFor } from '../../../utils/initials';
 import type { ProfileScreenProps, AppTabOptions } from '@navigation/types';
 import type { DiamondChecklistItem } from '@app-types/game';
 
@@ -30,21 +33,11 @@ const THEME_MODES: ThemeMode[] = ['light', 'dark', 'system'];
 const crateIcon = require('../../../../assets/jewelbox.png');
 const gemIcon = require('../../../../assets/factory.png');
 
-const QUICK_ACTIONS: { key: string; label: string; icon: LucideIcon }[] = [
-  { key: 'wallet', label: 'Wallet', icon: Wallet },
-  { key: 'leaderboard', label: 'Leaderboard', icon: Trophy },
-  { key: 'gifts', label: 'Gifts Won', icon: Gift },
-  { key: 'referrals', label: 'Referrals', icon: Share2 },
-];
-
-function initialsFor(name: string | null | undefined): string {
-  if (!name) return '?';
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
+interface QuickAction {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  onPress?: () => void;
 }
 
 export function SettingsScreen({ navigation }: ProfileScreenProps) {
@@ -55,11 +48,18 @@ export function SettingsScreen({ navigation }: ProfileScreenProps) {
   const displayName = useAppSelector((state) => state.auth.displayName);
   const connectionStatus = useAppSelector((state) => state.chat.connectionStatus);
 
-  const checklist = useMemo(() => gameService.getDiamondChecklist(), []);
+  const checklist = useAchievementChecklist();
   const username = displayName ?? gameService.getProfileSummary().username;
   const gamebar = useGamebarStats();
   const wallet = useWalletCounts();
   const [jewelStoreVisible, setJewelStoreVisible] = useState(false);
+
+  const quickActions: QuickAction[] = [
+    { key: 'wallet', label: 'Wallet', icon: Wallet },
+    { key: 'leaderboard', label: 'Leaderboard', icon: Trophy },
+    { key: 'gifts', label: 'Gifts Won', icon: Gift },
+    { key: 'referrals', label: 'Referrals', icon: Share2, onPress: () => navigation.navigate('Referrals') },
+  ];
 
   useLayoutEffect(() => {
     const options: AppTabOptions = {
@@ -95,13 +95,19 @@ export function SettingsScreen({ navigation }: ProfileScreenProps) {
         </View>
 
         <View style={styles.quickActionRow}>
-          {QUICK_ACTIONS.map((action) => {
+          {quickActions.map((action) => {
             const Icon = action.icon;
             return (
-              <View key={action.key} style={styles.quickActionTile}>
+              <Pressable
+                key={action.key}
+                style={({ pressed }) => [styles.quickActionTile, pressed && action.onPress && { opacity: states.pressedOpacity }]}
+                onPress={action.onPress}
+                disabled={!action.onPress}
+                accessibilityRole={action.onPress ? 'button' : undefined}
+              >
                 <Icon size={22} color={colors.onPrimaryContainer} strokeWidth={2} />
                 <Text style={styles.quickActionLabel}>{action.label}</Text>
-              </View>
+              </Pressable>
             );
           })}
         </View>

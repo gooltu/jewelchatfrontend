@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { getAchievements } from '../gameserver/achievementsApi';
 import * as authApi from '../gameserver/authApi';
 import { bulkPickJewel } from '../gameserver/bulkPickJewelApi';
 import { explodeBomb as explodeBombApi } from '../gameserver/explodeBombApi';
@@ -7,6 +8,7 @@ import { getGameState } from '../gameserver/gameStateApi';
 import { getNewTaskOnTaskCompletion } from '../gameserver/getNewTaskOnTaskCompletionApi';
 import { getTasks } from '../gameserver/tasksApi';
 import { getUserFactory } from '../gameserver/getUserFactoryApi';
+import { getUsersAchievement } from '../gameserver/userAchievementsApi';
 import * as phoneAuthApi from '../gameserver/phoneAuthApi';
 import { startFactory as startFactoryApi } from '../gameserver/startFactoryApi';
 import { stopFactory as stopFactoryApi } from '../gameserver/stopFactoryApi';
@@ -14,10 +16,12 @@ import { transferJewelsFromFactory as transferJewelsFromFactoryApi } from '../ga
 import { setAuthTokenProvider, setUnauthorizedHandler, setRefreshHandler } from '../gameserver/client';
 import { attemptRefreshAndRetry } from '../gameserver/tokenRefresh';
 import { store } from '../store';
+import { achievementsReceived } from '../store/slices/achievementsSlice';
 import { authenticationStarted, authenticationFailed, signedIn, signedOut } from '../store/slices/authSlice';
 import { factoriesReceived } from '../store/slices/factorySlice';
 import { gameStateReceived, pickedJewelsCleared } from '../store/slices/gameSlice';
 import { tasksReceived } from '../store/slices/tasksSlice';
+import { userAchievementsReceived } from '../store/slices/userAchievementsSlice';
 import { userFactoriesReceived, factoryStarted, factoryStopped } from '../store/slices/userFactorySlice';
 import { getGameServerTimeDelta, parseServerTimestamp } from './timeSyncService';
 import * as chatService from './chatService';
@@ -160,6 +164,43 @@ export async function refreshUserFactory(): Promise<void> {
     if (userFactories) store.dispatch(userFactoriesReceived(userFactories));
   } catch (err) {
     if (__DEV__) console.log('[refreshUserFactory] failed', err);
+  }
+}
+
+/**
+ * Best-effort: fetches the Profile tab's achievement catalog (definitions +
+ * diamond rewards) and stores it in Redux — but only if it isn't already
+ * there. Reference data, like refreshFactories, so once populated it's
+ * persisted across relaunches and never re-fetched.
+ */
+export async function refreshAchievements(): Promise<void> {
+  if (store.getState().auth.status !== 'signedIn') return;
+  if (store.getState().achievements.achievements) return;
+  try {
+    const achievements = await getAchievements();
+    if (achievements) store.dispatch(achievementsReceived(achievements));
+  } catch (err) {
+    if (__DEV__) console.log('[refreshAchievements] failed', err);
+  }
+}
+
+/**
+ * Best-effort: fetches the signed-in user's per-achievement progress
+ * (level) and stores it in Redux — but only if it isn't already there.
+ * Unlike refreshUserFactory, this is skipped whenever userAchievements is
+ * already populated (an explicit choice for this feature — see
+ * userAchievementsSlice.ts's doc comment), so it fetches once per cold
+ * launch and no-ops on every subsequent foreground within the same
+ * session.
+ */
+export async function refreshUserAchievements(): Promise<void> {
+  if (store.getState().auth.status !== 'signedIn') return;
+  if (store.getState().userAchievements.userAchievements) return;
+  try {
+    const userAchievements = await getUsersAchievement();
+    if (userAchievements) store.dispatch(userAchievementsReceived(userAchievements));
+  } catch (err) {
+    if (__DEV__) console.log('[refreshUserAchievements] failed', err);
   }
 }
 
@@ -369,6 +410,8 @@ export async function completeAuth(userId: number, displayName?: string): Promis
   void refreshTasks();
   void refreshFactories();
   void refreshUserFactory();
+  void refreshAchievements();
+  void refreshUserAchievements();
 }
 
 export async function submitInitialDetails(
@@ -400,6 +443,8 @@ export async function login(username: string, password: string): Promise<void> {
     void refreshTasks();
     void refreshFactories();
     void refreshUserFactory();
+    void refreshAchievements();
+    void refreshUserAchievements();
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Login failed';
     store.dispatch(authenticationFailed(message));
@@ -457,6 +502,8 @@ export async function restoreSession(): Promise<void> {
   void refreshTasks().then(() => checkForExplodedBombs());
   void refreshFactories();
   void refreshUserFactory();
+  void refreshAchievements();
+  void refreshUserAchievements();
 }
 
 /** Call on the app's background-to-active transition: no-ops if not signed in. */
