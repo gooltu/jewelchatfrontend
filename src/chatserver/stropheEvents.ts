@@ -224,6 +224,11 @@ async function handleMessageStanza(
     IS_REPLY: 0,
     REPLY_PARENT: null,
     IS_FORWARD: 0,
+    MEDIA_WIDTH: null,
+    MEDIA_HEIGHT: null,
+    MEDIA_DURATION_MS: null,
+    MEDIA_SIZE_BYTES: null,
+    MEDIA_MIME: null,
   });
 
   await incrementUnreadCount(chatRoomJid);

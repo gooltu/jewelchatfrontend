@@ -17,6 +17,8 @@ import { GroupInfoScreen } from '@components/screens/chat/GroupInfoScreen';
 import { TaskDetailScreen } from '@components/screens/game/TaskDetailScreen';
 import { FactoryScreen } from '@components/screens/game/FactoryScreen';
 import { ReferralsScreen } from '@components/screens/profile/ReferralsScreen';
+import { EditProfilePictureScreen } from '@components/screens/profile/EditProfilePictureScreen';
+import { MediaViewerScreen } from '@components/screens/chat/MediaViewerScreen';
 import type { RootStackParamList } from './types';
 
 /** Exposed so notifications/pushNotifications.ts can navigate from outside React (deep links). */
@@ -43,6 +45,12 @@ function SignedInNavigator() {
       <RootStack.Screen name="TaskDetail" component={TaskDetailScreen} />
       <RootStack.Screen name="Factory" component={FactoryScreen} />
       <RootStack.Screen name="Referrals" component={ReferralsScreen} />
+      <RootStack.Screen name="EditProfilePicture" component={EditProfilePictureScreen} />
+      <RootStack.Screen
+        name="MediaViewer"
+        component={MediaViewerScreen}
+        options={{ presentation: 'fullScreenModal', headerShown: false, animation: 'fade' }}
+      />
     </RootStack.Navigator>
   );
 }

@@ -58,6 +58,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         contactsPermission: 'Allow $(PRODUCT_NAME) to access your contacts to find people on Jewel Chat.',
       },
     ],
+    // Gallery-only v1 (no camera capture yet) — cameraPermission/
+    // microphonePermission explicitly false so the native build doesn't
+    // request either permission.
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'Allow $(PRODUCT_NAME) to access your photos to send them in chat.',
+        cameraPermission: false,
+        microphonePermission: false,
+      },
+    ],
+    'expo-video',
     // expo-notifications disabled for early development: remote push isn't
     // testable in Expo Go (SDK 53+ removed it) and a dev client isn't set
     // up yet. Re-enable when that's in place.

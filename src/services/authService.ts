@@ -399,10 +399,20 @@ export async function completeAuth(userId: number, displayName?: string): Promis
     SecureStore.getItemAsync(JID_KEY),
     getStoredRefreshToken(),
   ]);
-  await chatService.seedWelcomeContact();
   store.dispatch(
     signedIn({ userId: String(userId), jid: jid ?? '', displayName: displayName ?? 'defaultJCUname' }),
   );
+  // Best-effort: a hiccup seeding the welcome bot contact/messages must
+  // never block sign-in itself (this used to be awaited ahead of the
+  // `signedIn` dispatch above, so any failure here — e.g. a DB write
+  // contending with first-run migrations — left the user stuck on the
+  // auth screen with no way to proceed). The .catch is required, not just
+  // the `void`: an uncaught rejection here throws up a LogBox overlay in
+  // dev that visually covers the already-navigated-to screen, which looks
+  // identical to sign-in never having happened.
+  chatService.seedWelcomeContact().catch((err) => {
+    if (__DEV__) console.warn('[authService] seedWelcomeContact failed (non-fatal):', err);
+  });
   if (jid && refreshToken) {
     chatService.connect(jid, refreshToken);
   }
@@ -494,6 +504,13 @@ export async function restoreSession(): Promise<void> {
   // attemptRefreshAndRetry, which refreshes-and-retries or calls logout().
   store.dispatch(signedIn({ userId, jid, displayName: 'defaultJCUname' }));
   chatService.connect(jid, refreshToken);
+  // Safe to run before the XMPP connection is live — upload itself doesn't
+  // need XMPP, and enqueueOutgoingMessage (called once a resumed upload
+  // finishes) already tolerates "not connected yet". This is the only
+  // resume path for a photo/video upload interrupted by the app being
+  // fully killed (not just backgrounded) mid-upload — resyncAfterForeground
+  // never runs on a cold launch.
+  void chatService.resumePendingMediaUploads();
   void refreshGameState();
   // Chained (not fire-and-forget alongside itself) so a bomb whose deadline
   // passed while the app was fully killed — not just backgrounded — still

@@ -50,6 +50,16 @@ export type RootStackParamList = {
   TaskDetail: { taskId: string };
   Factory: undefined;
   Referrals: undefined;
+  EditProfilePicture: undefined;
+  /**
+   * `key`/`thumbnailKey` are this app's own S3 keys (or a still-local
+   * file:// placeholder for an own message still uploading), not a
+   * resolved URI — durable/serializable as a route param; the viewer
+   * re-resolves independently via useResolvedMediaUri, same as the bubble.
+   */
+  MediaViewer:
+    | { kind: 'image'; key: string }
+    | { kind: 'video'; key: string; thumbnailKey: string | null };
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<

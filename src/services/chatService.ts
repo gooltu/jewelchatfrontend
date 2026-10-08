@@ -31,9 +31,15 @@ import {
   markAllReadInRoom,
   markSubmitted,
   markJewelPicked,
+  markError,
+  markMediaUploaded,
   getMessageBySenderMsgId,
+  getMessageById,
   getUnreadMessages,
+  getPendingMediaUploads,
 } from '../database/messageRepository';
+import * as mediaUploadService from '@media/mediaUploadService';
+import type { PreparedUpload } from '@media/mediaUploadService';
 import {
   resetUnreadCount,
   updateLastMessagePreview,
@@ -219,6 +225,7 @@ export async function resyncAfterForeground(jid: string, password: string): Prom
     // via the indirect onConnectionStatusChange→flushPendingMessages chain,
     // since that only fires on an actual status transition to 'connected'.
     await flushPendingMessages();
+    void resumePendingMediaUploads();
     await downloadHistorySinceBackground();
     await syncGroupRooms();
   } catch (error) {
@@ -379,6 +386,11 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
     IS_REPLY: 0,
     REPLY_PARENT: null,
     IS_FORWARD: 0,
+    MEDIA_WIDTH: null,
+    MEDIA_HEIGHT: null,
+    MEDIA_DURATION_MS: null,
+    MEDIA_SIZE_BYTES: null,
+    MEDIA_MIME: null,
   });
 
   if (!isOwnSentMessage) await incrementUnreadCount(message.chatRoomJid);
@@ -499,6 +511,11 @@ export async function seedWelcomeContact(): Promise<void> {
       IS_REPLY: 0,
       REPLY_PARENT: null,
       IS_FORWARD: 0,
+      MEDIA_WIDTH: null,
+      MEDIA_HEIGHT: null,
+      MEDIA_DURATION_MS: null,
+      MEDIA_SIZE_BYTES: null,
+      MEDIA_MIME: null,
     });
     await incrementUnreadCount(WELCOME_CONTACT_JID);
     lastCreatedTime = createdTime;
@@ -605,6 +622,11 @@ export async function sendTextMessage(params: SendTextMessageParams): Promise<Ch
     IS_REPLY: params.replyParent ? 1 : 0,
     REPLY_PARENT: params.replyParent ?? null,
     IS_FORWARD: 0,
+    MEDIA_WIDTH: null,
+    MEDIA_HEIGHT: null,
+    MEDIA_DURATION_MS: null,
+    MEDIA_SIZE_BYTES: null,
+    MEDIA_MIME: null,
   });
 
   await updateLastMessagePreview(params.chatRoomJid, {
@@ -666,6 +688,11 @@ async function sendMediaMessage(
     IS_REPLY: 0,
     REPLY_PARENT: null,
     IS_FORWARD: 0,
+    MEDIA_WIDTH: null,
+    MEDIA_HEIGHT: null,
+    MEDIA_DURATION_MS: null,
+    MEDIA_SIZE_BYTES: null,
+    MEDIA_MIME: null,
   });
 
   await updateLastMessagePreview(params.chatRoomJid, {
@@ -677,6 +704,156 @@ async function sendMediaMessage(
 
   enqueueOutgoingMessage(message);
   return message;
+}
+
+export interface SendPreparedMediaParams {
+  chatRoomJid: string;
+  isGroupMsg: boolean;
+  senderJid: string;
+  senderName: string | null;
+  prepared: PreparedUpload;
+}
+
+/**
+ * Photo/video can't follow sendMediaMessage's "insert, then immediately
+ * enqueue" shape unmodified: the stanza must carry the final S3 key, which
+ * doesn't exist until the upload finishes. So the row is inserted with
+ * MEDIA_UPLOADED = 0 and MEDIA_CLOUD holding the local prepared file's own
+ * file:// URI (the bubble renders optimistically from that — no special
+ * "uploading" chrome, see MessageBubble's confirmed image/video content
+ * shapes), and enqueueOutgoingMessage is deferred until
+ * uploadAndSendMedia's fire-and-forget finishes.
+ */
+async function sendPreparedMediaMessage(
+  params: SendPreparedMediaParams,
+  msgType: number,
+  placeholderText: string,
+): Promise<ChatMessage> {
+  const now = Date.now();
+  const kind = msgType === MSG_TYPE.VIDEO ? 'video' : 'image';
+
+  const message = await insertOutgoingMessage({
+    IS_GROUP_MSG: params.isGroupMsg ? 1 : 0,
+    MSG_TYPE: msgType,
+    CREATED_DATE: new Date(now).toISOString().slice(0, 10),
+    CREATED_TIME: now,
+    CHAT_ROOM_JID: params.chatRoomJid,
+    CREATOR_JID: params.senderJid,
+    SENDER_NAME: params.senderName,
+    TIME_CREATED: now,
+    JEWEL_TYPE: null,
+    IS_JEWEL_PICKED: 0,
+    MSG_TEXT: placeholderText,
+    MEDIA_UPLOADED: 0,
+    MEDIA_CLOUD: params.prepared.localUri,
+    MEDIA_CLOUD_THUMBNAIL: params.prepared.thumbnailLocalUri,
+    IS_REPLY: 0,
+    REPLY_PARENT: null,
+    IS_FORWARD: 0,
+    MEDIA_WIDTH: params.prepared.width,
+    MEDIA_HEIGHT: params.prepared.height,
+    MEDIA_DURATION_MS: params.prepared.durationMs,
+    MEDIA_SIZE_BYTES: params.prepared.sizeBytes,
+    MEDIA_MIME: params.prepared.mimeType,
+  });
+
+  await updateLastMessagePreview(params.chatRoomJid, {
+    msgText: placeholderText,
+    msgType,
+    createdTime: now,
+  });
+  notifyRoom(params.chatRoomJid);
+
+  void uploadAndSendMedia(message, kind);
+  return message;
+}
+
+export function sendImageMessage(params: SendPreparedMediaParams): Promise<ChatMessage> {
+  return sendPreparedMediaMessage(params, MSG_TYPE.IMAGE, 'Photo');
+}
+
+export function sendVideoMessage(params: SendPreparedMediaParams): Promise<ChatMessage> {
+  return sendPreparedMediaMessage(params, MSG_TYPE.VIDEO, 'Video');
+}
+
+/** Rebuilds a PreparedUpload from a row's own columns — used by both the initial send and every resume attempt. */
+function preparedUploadFromRow(message: ChatMessage): PreparedUpload {
+  return {
+    localUri: message.MEDIA_CLOUD ?? '',
+    thumbnailLocalUri: message.MEDIA_CLOUD_THUMBNAIL,
+    width: message.MEDIA_WIDTH,
+    height: message.MEDIA_HEIGHT,
+    durationMs: message.MEDIA_DURATION_MS,
+    sizeBytes: message.MEDIA_SIZE_BYTES ?? 0,
+    mimeType: message.MEDIA_MIME ?? (message.MSG_TYPE === MSG_TYPE.VIDEO ? 'video/mp4' : 'image/jpeg'),
+  };
+}
+
+/**
+ * Uploads a pending IMAGE/VIDEO row's prepared local file and, only once
+ * that succeeds, stamps the real key(s) in and hands it to
+ * enqueueOutgoingMessage — single-attempt, no in-process backoff loop;
+ * recovery is resumePendingMediaUploads's job (foreground resume + cold
+ * launch), not a retry timer here. Exported so FailedCaption's retry
+ * handler (ChatDetailScreen) can re-run it directly on tap.
+ */
+export async function uploadAndSendMedia(message: ChatMessage, kind: 'image' | 'video'): Promise<void> {
+  const prepared = preparedUploadFromRow(message);
+
+  try {
+    if (!mediaUploadService.localFileExists(prepared.localUri)) {
+      await markError(message._ID, true);
+      if (message.CHAT_ROOM_JID) notifyRoom(message.CHAT_ROOM_JID);
+      return;
+    }
+
+    const uploaded = await mediaUploadService.uploadPreparedMedia(prepared, kind);
+    await markMediaUploaded(message._ID, uploaded);
+    const updated = await getMessageById(message._ID);
+    if (!updated) return;
+    if (updated.CHAT_ROOM_JID) notifyRoom(updated.CHAT_ROOM_JID);
+    enqueueOutgoingMessage(updated);
+  } catch (error) {
+    if (__DEV__) console.log('[chatService] uploadAndSendMedia failed:', error);
+    await markError(message._ID, true);
+    if (message.CHAT_ROOM_JID) notifyRoom(message.CHAT_ROOM_JID);
+  }
+}
+
+/**
+ * Resumes anything still sitting at MEDIA_UPLOADED = 0 — the only recovery
+ * path for an upload interrupted by the app being backgrounded/killed
+ * mid-upload, since getPendingOutgoingMessages (syncService's own retry
+ * scan) only sees rows after enqueueOutgoingMessage has already run. Called
+ * from resyncAfterForeground below and from authService.restoreSession on
+ * cold launch.
+ */
+export async function resumePendingMediaUploads(): Promise<void> {
+  const pending = await getPendingMediaUploads();
+  for (const message of pending) {
+    const kind = message.MSG_TYPE === MSG_TYPE.VIDEO ? 'video' : 'image';
+    void uploadAndSendMedia(message, kind);
+  }
+}
+
+/**
+ * Tap-to-retry for FailedCaption (ChatDetailScreen) — same handler for every
+ * failed message kind: clear IS_ERROR, then re-run whichever send path
+ * actually applies. IMAGE/VIDEO re-upload from the still-local prepared file
+ * (uploadAndSendMedia itself handles "the file is gone" by re-failing);
+ * everything else just re-enqueues the already-written row.
+ */
+export async function retryFailedMessage(message: ChatMessage): Promise<void> {
+  await markError(message._ID, false);
+  if (message.CHAT_ROOM_JID) notifyRoom(message.CHAT_ROOM_JID);
+
+  if (message.MSG_TYPE === MSG_TYPE.IMAGE || message.MSG_TYPE === MSG_TYPE.VIDEO) {
+    const kind = message.MSG_TYPE === MSG_TYPE.VIDEO ? 'video' : 'image';
+    await uploadAndSendMedia(message, kind);
+    return;
+  }
+
+  enqueueOutgoingMessage(message);
 }
 
 export function sendTypingIndicator(chatRoomJid: string, isGroupMsg: boolean, isTyping: boolean): void {

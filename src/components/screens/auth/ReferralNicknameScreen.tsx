@@ -26,8 +26,11 @@ export function ReferralNicknameScreen({ route }: AuthScreenProps<'ReferralNickn
   const handleSkip = async () => {
     if (submitting) return;
     setSubmitting(true);
+    setError(null);
     try {
       await authService.completeAuth(userId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not continue. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -82,7 +85,7 @@ export function ReferralNicknameScreen({ route }: AuthScreenProps<'ReferralNickn
           <ButtonPrimary label="Continue" onPress={handleSubmit} disabled={submitting} />
 
           <View style={styles.skip}>
-            <ButtonGhost label="Skip" onPress={handleSkip} />
+            <ButtonGhost label="Skip" onPress={handleSkip} disabled={submitting} />
           </View>
 
           {error ? (

@@ -13,6 +13,7 @@ import {
   SkeletonRow,
 } from '@components/design-system';
 import { JewelStoreSheet } from '@components/shared/JewelStoreSheet';
+import { useAvatarSource } from '@hooks/useAvatarSource';
 import { useConversations } from '@hooks/useConversations';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useWalletCounts } from '@hooks/useWalletCounts';
@@ -91,16 +92,7 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
           data={filtered}
           keyExtractor={(item) => String(item._ID)}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <ChatListItem
-              name={item.CONTACT_NAME ?? item.PHONEBOOK_CONTACT_NAME ?? item.JID ?? 'Unknown'}
-              snippet={item.MSG_TEXT ?? ''}
-              timestamp={formatTimestamp(item.LAST_MSG_CREATED_TIME)}
-              avatarInitials={initialsFor(item.CONTACT_NAME ?? item.PHONEBOOK_CONTACT_NAME)}
-              unreadCount={item.UNREAD_COUNT}
-              onPress={() => openConversation(item)}
-            />
-          )}
+          renderItem={({ item }) => <ChatListRow conversation={item} onPress={() => openConversation(item)} />}
         />
       )}
 
@@ -113,6 +105,26 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
 
       <JewelStoreSheet visible={jewelStoreVisible} onClose={() => setJewelStoreVisible(false)} />
     </SafeAreaView>
+  );
+}
+
+/**
+ * Extracted per-row component (mirrors ChatDetailScreen's MessageBubbleRow
+ * pattern) — useAvatarSource needs real hooks, which a FlatList renderItem
+ * callback can't own directly.
+ */
+function ChatListRow({ conversation, onPress }: { conversation: Conversation; onPress: () => void }) {
+  const avatarSource = useAvatarSource(conversation.JID);
+  return (
+    <ChatListItem
+      name={conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? conversation.JID ?? 'Unknown'}
+      snippet={conversation.MSG_TEXT ?? ''}
+      timestamp={formatTimestamp(conversation.LAST_MSG_CREATED_TIME)}
+      avatarSource={avatarSource}
+      avatarInitials={initialsFor(conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME)}
+      unreadCount={conversation.UNREAD_COUNT}
+      onPress={onPress}
+    />
   );
 }
 

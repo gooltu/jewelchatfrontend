@@ -69,7 +69,12 @@ async function attemptSend(message: ChatMessage): Promise<void> {
       msgtype: String(message.MSG_TYPE ?? MSG_TYPE.TEXT),
     }).c('body', {}).t(message.MSG_TEXT ?? '');
 
-    if (message.MSG_TYPE === MSG_TYPE.STICKER || message.MSG_TYPE === MSG_TYPE.GIF) {
+    if (
+      message.MSG_TYPE === MSG_TYPE.STICKER ||
+      message.MSG_TYPE === MSG_TYPE.GIF ||
+      message.MSG_TYPE === MSG_TYPE.IMAGE ||
+      message.MSG_TYPE === MSG_TYPE.VIDEO
+    ) {
       stanza = withMediaElement(stanza, {
         msgType: message.MSG_TYPE,
         link: message.MEDIA_CLOUD ?? '',

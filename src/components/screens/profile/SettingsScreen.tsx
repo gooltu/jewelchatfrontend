@@ -1,8 +1,9 @@
-import { useLayoutEffect, useState } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 import { Gift, MoreVertical, Share2, Trophy, Wallet } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   useStyles,
   useThemeColors,
@@ -21,6 +22,7 @@ import { useAppDispatch, useAppSelector } from '@store/hooks';
 import { setThemeMode, type ThemeMode } from '@store/slices/themeSlice';
 import { JewelStoreSheet } from '@components/shared/JewelStoreSheet';
 import { useAchievementChecklist } from '@hooks/useAchievementChecklist';
+import { useAvatarSource } from '@hooks/useAvatarSource';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useWalletCounts } from '@hooks/useWalletCounts';
 import * as authService from '@services/authService';
@@ -46,7 +48,19 @@ export function SettingsScreen({ navigation }: ProfileScreenProps) {
   const dispatch = useAppDispatch();
   const currentMode = useAppSelector((state) => state.theme.mode);
   const displayName = useAppSelector((state) => state.auth.displayName);
+  const myJid = useAppSelector((state) => state.auth.jid);
   const connectionStatus = useAppSelector((state) => state.chat.connectionStatus);
+  // ProfileTab stays mounted when EditProfilePicture is pushed over it
+  // (bottom-tabs doesn't unmount on blur), so myJid never changes on the
+  // way back — bumping this on every focus is what makes a just-uploaded
+  // photo actually show up here again, via useAvatarSource's refreshKey.
+  const [avatarRefreshKey, setAvatarRefreshKey] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setAvatarRefreshKey((key) => key + 1);
+    }, []),
+  );
+  const avatarSource = useAvatarSource(myJid, avatarRefreshKey);
 
   const checklist = useAchievementChecklist();
   const username = displayName ?? gameService.getProfileSummary().username;
@@ -85,7 +99,9 @@ export function SettingsScreen({ navigation }: ProfileScreenProps) {
             <Text style={styles.statValue}>{wallet.diamonds}</Text>
           </View>
           <View style={styles.identity}>
-            <Avatar initials={initialsFor(username)} size={72} />
+            <Pressable onPress={() => navigation.navigate('EditProfilePicture')} hitSlop={8}>
+              <Avatar source={avatarSource} initials={initialsFor(username)} size={72} />
+            </Pressable>
             <Text style={styles.username}>{username}</Text>
           </View>
           <View style={styles.statPill}>

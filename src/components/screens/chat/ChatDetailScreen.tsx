@@ -3,6 +3,7 @@ import { MoreVertical, Phone } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import {
   useStyles,
   type ThemeColors,
@@ -21,13 +22,21 @@ import {
 import { useMessages } from '@hooks/useMessages';
 import { useMessageReactions } from '@hooks/useMessageReactions';
 import { useMediaPicker } from '@hooks/useMediaPicker';
+import { useAvatarSource } from '@hooks/useAvatarSource';
 import { useDisplayName } from '@hooks/useDisplayName';
 import { useKeyboardOffset } from '@hooks/useKeyboardOffset';
 import { useCanPickJewel } from '@hooks/useCanPickJewel';
+import { useResolvedMediaUri } from '@hooks/useResolvedMediaUri';
 import { useAppSelector } from '@store/hooks';
 import { typingSelectors } from '@store/slices/chatSlice';
 import * as authService from '@services/authService';
 import * as chatService from '@services/chatService';
+import {
+  checkMediaCaps,
+  prepareImageForUpload,
+  prepareVideoForUpload,
+  msToClockString,
+} from '@media/mediaUploadService';
 import { deriveMessageStatus } from '@database/messageRepository';
 import type { RootScreenProps, AppStackOptions } from '@navigation/types';
 import { MSG_TYPE, type ChatMessage } from '@app-types/chat';
@@ -104,6 +113,11 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
   const [jewelboxFullVisible, setJewelboxFullVisible] = useState(false);
   const handleJewelboxFull = useCallback(() => setJewelboxFullVisible(true), []);
   const dismissJewelboxFull = useCallback(() => setJewelboxFullVisible(false), []);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const dismissMediaError = useCallback(() => setMediaError(null), []);
+  // 1:1 only — a group header represents the whole room, not one person;
+  // group photo is out of scope here (see profile-picture-upload-and-display plan).
+  const headerAvatarSource = useAvatarSource(isGroup ? null : chatRoomJid);
 
   useEffect(() => {
     chatService.setActiveConversation(chatRoomJid);
@@ -130,7 +144,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
     const options: AppStackOptions = {
       title,
       headerProps: {
-        avatar: { initials: initialsFor(title) },
+        avatar: { source: headerAvatarSource, initials: initialsFor(title) },
         subtitle: isPeerTyping ? 'typing…' : undefined,
         onTitlePress: isGroup ? () => navigation.navigate('GroupInfo', { chatRoomJid, title }) : undefined,
         actions: [
@@ -140,7 +154,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
       },
     };
     navigation.setOptions(options);
-  }, [navigation, title, isPeerTyping, isGroup, chatRoomJid]);
+  }, [navigation, title, isPeerTyping, isGroup, chatRoomJid, headerAvatarSource]);
 
   // NOTE: chatService.sendTypingIndicator exists and is fully wired on the
   // receive side (stropheEvents -> chatSlice's typing entity adapter), but
@@ -183,6 +197,53 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
     });
   };
 
+  /**
+   * Gallery only (no camera) — picks, rejects instantly on cap overage with
+   * zero DB/network side effects, then prepares (downscale/thumbnail) before
+   * handing off to chatService, which writes the row and renders optimistically
+   * from the local file while the upload runs in the background.
+   */
+  const handleAttach = async () => {
+    if (!myJid) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      quality: 1,
+    });
+    const asset = result.canceled ? null : result.assets[0];
+    if (!asset) return;
+
+    const capCheck = checkMediaCaps(asset);
+    if (!capCheck.ok) {
+      setMediaError(capCheck.reason ?? "That file can't be sent.");
+      return;
+    }
+
+    try {
+      if (asset.type === 'video') {
+        const prepared = await prepareVideoForUpload(asset);
+        await chatService.sendVideoMessage({
+          chatRoomJid,
+          isGroupMsg: isGroup,
+          senderJid: myJid,
+          senderName: null,
+          prepared,
+        });
+      } else {
+        const prepared = await prepareImageForUpload(asset);
+        await chatService.sendImageMessage({
+          chatRoomJid,
+          isGroupMsg: isGroup,
+          senderJid: myJid,
+          senderName: null,
+          prepared,
+        });
+      }
+    } catch (error) {
+      if (__DEV__) console.log('[ChatDetailScreen] handleAttach failed:', error);
+      setMediaError("Couldn't prepare that file — try again.");
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Animated.FlatList
@@ -222,6 +283,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
               myJid={myJid}
               isGroup={isGroup}
               onJewelCapped={handleJewelboxFull}
+              navigation={navigation}
             />
           );
         }}
@@ -245,9 +307,15 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
         </View>
       ) : null}
 
+      {mediaError ? (
+        <View style={styles.toastWrap}>
+          <Toast variant="warning" title="Can't send that" description={mediaError} onDismiss={dismissMediaError} />
+        </View>
+      ) : null}
+
       <ChatInputBar
         onSend={handleSend}
-        onAttach={() => {}}
+        onAttach={handleAttach}
         stickers={stickers}
         gifs={gifs}
         onSendSticker={handleSendSticker}
@@ -263,8 +331,10 @@ function MessageBubbleRow({
   myJid,
   isGroup,
   onJewelCapped,
+  navigation,
 }: {
   message: ChatMessage;
+  navigation: RootScreenProps<'ChatDetail'>['navigation'];
   chatRoomJid: string;
   myJid: string | null;
   isGroup: boolean;
@@ -294,6 +364,17 @@ function MessageBubbleRow({
   const [jewelVisible, setJewelVisible] = useState(
     direction === 'incoming' && !!jewelIconType && !message.IS_JEWEL_PICKED,
   );
+  // IMAGE/VIDEO-only (see mediaUploadService.resolveMediaUri) — null args for
+  // every other MSG_TYPE are harmless no-ops, kept unconditional so hook
+  // order never changes across renders.
+  const resolvedImageUri = useResolvedMediaUri(
+    message.MSG_TYPE === MSG_TYPE.IMAGE ? message.MEDIA_CLOUD : null,
+  );
+  const resolvedThumbUri = useResolvedMediaUri(
+    message.MSG_TYPE === MSG_TYPE.VIDEO ? message.MEDIA_CLOUD_THUMBNAIL : null,
+  );
+  const mediaAspectRatio =
+    message.MEDIA_WIDTH && message.MEDIA_HEIGHT ? message.MEDIA_WIDTH / message.MEDIA_HEIGHT : undefined;
 
   return (
     <View>
@@ -316,7 +397,31 @@ function MessageBubbleRow({
               ? { kind: 'sticker', source: { uri: message.MEDIA_CLOUD ?? '' } }
               : message.MSG_TYPE === MSG_TYPE.GIF
                 ? { kind: 'gif', source: { uri: message.MEDIA_CLOUD ?? '' } }
-                : { kind: 'text', text: message.MSG_TEXT ?? '' }
+                : message.MSG_TYPE === MSG_TYPE.IMAGE
+                  ? {
+                      kind: 'image',
+                      source: { uri: resolvedImageUri ?? '' },
+                      aspectRatio: mediaAspectRatio,
+                      onPress: () =>
+                        navigation.navigate('MediaViewer', {
+                          kind: 'image',
+                          key: message.MEDIA_CLOUD ?? '',
+                        }),
+                    }
+                  : message.MSG_TYPE === MSG_TYPE.VIDEO
+                    ? {
+                        kind: 'video',
+                        thumbnail: { uri: resolvedThumbUri ?? '' },
+                        duration: msToClockString(message.MEDIA_DURATION_MS ?? 0),
+                        aspectRatio: mediaAspectRatio,
+                        onPlay: () =>
+                          navigation.navigate('MediaViewer', {
+                            kind: 'video',
+                            key: message.MEDIA_CLOUD ?? '',
+                            thumbnailKey: message.MEDIA_CLOUD_THUMBNAIL,
+                          }),
+                      }
+                    : { kind: 'text', text: message.MSG_TEXT ?? '' }
           }
           timestamp={formatTime(message.CREATED_TIME)}
           status={direction === 'outgoing' ? bubbleStatus : undefined}
@@ -329,14 +434,20 @@ function MessageBubbleRow({
           ))}
         </View>
       ) : null}
-      {status === 'failed' ? <FailedCaption /> : null}
+      {status === 'failed' ? (
+        <FailedCaption onRetry={() => void chatService.retryFailedMessage(message)} />
+      ) : null}
     </View>
   );
 }
 
-function FailedCaption() {
+function FailedCaption({ onRetry }: { onRetry: () => void }) {
   const styles = useStyles(makeStyles);
-  return <Text style={styles.failedCaption}>Failed to send · tap to retry</Text>;
+  return (
+    <Pressable onPress={onRetry} hitSlop={8}>
+      <Text style={styles.failedCaption}>Failed to send · tap to retry</Text>
+    </Pressable>
+  );
 }
 
 const JEWEL_PICK_ANIMATION_MS = 200;

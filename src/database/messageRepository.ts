@@ -246,6 +246,11 @@ export async function insertSystemMessage(params: {
     IS_REPLY: 0,
     REPLY_PARENT: null,
     IS_FORWARD: 0,
+    MEDIA_WIDTH: null,
+    MEDIA_HEIGHT: null,
+    MEDIA_DURATION_MS: null,
+    MEDIA_SIZE_BYTES: null,
+    MEDIA_MIME: null,
   });
 }
 
@@ -328,6 +333,40 @@ export async function getPendingOutgoingMessages(): Promise<ChatMessage[]> {
   const db = await getDatabase();
   return db.getAllAsync<ChatMessage>(
     `SELECT * FROM ChatMessage WHERE IS_SUBMITTED = 0 AND IS_ERROR = 0 ORDER BY SEQUENCE ASC;`,
+  );
+}
+
+/**
+ * Stamps the real S3 key(s) in once chatService.uploadAndSendMedia finishes
+ * uploading, and flips MEDIA_UPLOADED so this row drops out of
+ * getPendingMediaUploads. Only call once enqueueOutgoingMessage is about to
+ * run — see the "upload, then enqueue" ordering in chatService.ts.
+ */
+export async function markMediaUploaded(
+  id: number,
+  media: { mediaCloud: string; mediaThumbnail: string | null },
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE ChatMessage SET MEDIA_UPLOADED = 1, MEDIA_CLOUD = ?, MEDIA_CLOUD_THUMBNAIL = ? WHERE _ID = ?;`,
+    [media.mediaCloud, media.mediaThumbnail, id],
+  );
+}
+
+/**
+ * IMAGE/VIDEO rows still sitting on their local file:// placeholder —
+ * chatService.resumePendingMediaUploads's query, called on foreground
+ * resume and cold launch to pick up an upload interrupted by a background
+ * kill. Excludes IS_ERROR rows (permanently failed, needs an explicit
+ * tap-to-retry instead) the same way getPendingOutgoingMessages does.
+ */
+export async function getPendingMediaUploads(): Promise<ChatMessage[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<ChatMessage>(
+    `SELECT * FROM ChatMessage
+     WHERE MSG_TYPE IN (?, ?) AND MEDIA_UPLOADED = 0 AND IS_ERROR = 0
+     ORDER BY SEQUENCE ASC;`,
+    [MSG_TYPE.IMAGE, MSG_TYPE.VIDEO],
   );
 }
 

@@ -57,6 +57,11 @@ export interface ChatMessage {
   IS_REPLY: number;
   REPLY_PARENT: number | null;
   IS_FORWARD: number;
+  MEDIA_WIDTH: number | null;
+  MEDIA_HEIGHT: number | null;
+  MEDIA_DURATION_MS: number | null;
+  MEDIA_SIZE_BYTES: number | null;
+  MEDIA_MIME: string | null;
 }
 
 export interface GroupMember {
@@ -116,15 +121,18 @@ export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
 /**
  * Meaning of the ChatMessage.MSG_TYPE integer column — the column already
  * existed (always hardcoded to 0 until now), this just assigns meaning to
- * it. Only numbers what's actually implemented; a future kind (image,
- * video, ...) gets the next free number when it's actually built, not
- * reserved ahead of time.
+ * it. Only numbers what's actually implemented.
  *
  * SYSTEM rows (group created/renamed/roster changes) are synthesized
  * locally, never sent over the wire — CREATOR_JID is null and the UI
  * renders MSG_TEXT via SystemLabel instead of a MessageBubble.
+ *
+ * IMAGE/VIDEO reuse ChatMessage's existing MEDIA_CLOUD/MEDIA_CLOUD_THUMBNAIL
+ * columns the same way STICKER/GIF do, plus the migration-004 metadata
+ * columns (MEDIA_WIDTH/HEIGHT/DURATION_MS/SIZE_BYTES/MIME) — see
+ * src/media/mediaUploadService.ts.
  */
-export const MSG_TYPE = { TEXT: 0, STICKER: 1, GIF: 2, SYSTEM: 3 } as const;
+export const MSG_TYPE = { TEXT: 0, STICKER: 1, GIF: 2, SYSTEM: 3, IMAGE: 4, VIDEO: 5 } as const;
 
 /**
  * Chat-game jewel values a real incoming message (never our own) may be
