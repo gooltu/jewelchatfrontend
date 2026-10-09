@@ -20,6 +20,7 @@ import factoryReducer from './slices/factorySlice';
 import gameReducer from './slices/gameSlice';
 import inviteesReducer from './slices/inviteesSlice';
 import loadingReducer from './slices/loadingSlice';
+import rosterReducer from './slices/rosterSlice';
 import taskElementsReducer from './slices/taskElementsSlice';
 import tasksReducer from './slices/tasksSlice';
 import themeReducer from './slices/themeSlice';
@@ -35,6 +36,7 @@ const rootReducer = combineReducers({
   game: gameReducer,
   invitees: inviteesReducer,
   loading: loadingReducer,
+  roster: rosterReducer,
   taskElements: taskElementsReducer,
   tasks: tasksReducer,
   theme: themeReducer,
@@ -93,7 +95,11 @@ const persistConfig = {
   //    flow wired up yet — see childrenSlice.ts/inviteesSlice.ts) for
   //    achievements 1 and 3-17's current_value. Persisted so whatever gets
   //    populated into them later survives a relaunch, same as `game`.
-  whitelist: ['theme', 'game', 'factory', 'achievements', 'invitees', 'children'],
+  //  - `roster` holds a single persisted boolean (backfillComplete) gating
+  //    chatService.backfillRosterSubscriptions — must survive relaunch, or
+  //    the one-time roster/presence-subscription backfill would re-run
+  //    (harmlessly, but needlessly) on every cold launch forever.
+  whitelist: ['theme', 'game', 'factory', 'achievements', 'invitees', 'children', 'roster'],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

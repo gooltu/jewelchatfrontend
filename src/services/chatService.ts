@@ -11,6 +11,7 @@ import {
 import type { PickerMediaItem } from '@components/design-system';
 import { registerStanzaHandlers } from '../chatserver/stropheEvents';
 import { buildDisplayedStanza, buildReceivedStanza } from '../chatserver/receiptStanzas';
+import * as roster from '../chatserver/roster';
 import {
   fetchArchivedMessages,
   fetchArchivedRoomMessages,
@@ -46,22 +47,30 @@ import {
   upsertContact,
   incrementUnreadCount,
   getContactByJid,
+  getContactByNumber,
   getGroupContacts,
+  insertBareContactIfMissing,
+  getResolvedPhonebookContacts,
+  attachJewelchatIdentity,
+  mergePhonebookContactIntoJid,
   updateGroupName,
   updateGroupAdminFlag,
   deleteContact,
 } from '../database/contactRepository';
 import { replaceGroupMembers } from '../database/groupMemberRepository';
-import { enqueueOutgoingMessage, flushPendingMessages } from './syncService';
+import * as contactLookupApi from '../gameserver/contactLookupApi';
+import { enqueueOutgoingMessage, flushPendingMessages, setSubmittedListener } from './syncService';
 import * as timeSyncService from './timeSyncService';
 import { store } from '../store';
 import {
   activeConversationSet,
   connectionStatusChanged,
   typingReceived,
+  presenceReceived,
   type XmppConnectionStatus,
 } from '../store/slices/chatSlice';
 import { jewelPicked } from '../store/slices/gameSlice';
+import { backfillMarkedComplete } from '../store/slices/rosterSlice';
 import { MSG_TYPE, randomJewelType, type ChatMessage } from '../types/chat';
 import { MAX_JEWEL_CAPACITY, sumPickableJewels } from '../types/game';
 
@@ -100,6 +109,12 @@ function notifyRoom(jid: string): void {
   allRoomsListeners.forEach((listener) => listener());
 }
 
+// Lets syncService.ts's attemptSend trigger a UI refresh right after
+// markSubmitted, the same way every other DB write in this file does —
+// registered here (not a circular import) since syncService can't import
+// notifyRoom back from this module.
+setSubmittedListener((jid) => notifyRoom(jid));
+
 // Maps stropheClient's transport-level status to the coarser status the UI
 // cares about. connfail/authfail/conntimeout/error/disconnected all collapse
 // to 'reconnecting' because stropheClient auto-retries all of them unless
@@ -135,8 +150,162 @@ function ensureStanzaHandlersRegistered(myJid: string): void {
       void resolveMissingGroupName(groupJid);
       notifyRoom(groupJid);
     },
+    onPresenceChanged: (jid, isOnline) => {
+      store.dispatch(presenceReceived({ jid, isOnline, timestamp: Date.now() }));
+    },
+    onSubscriptionRequest: (fromJid) => {
+      void handleIncomingSubscriptionRequest(fromJid);
+    },
   });
   handlersRegisteredFor = connection;
+}
+
+/**
+ * An incoming presence `subscribe` request, gated by this device's own
+ * phonebook — mirrors the server-side trust model a real XMPP client
+ * applies: only let someone see your presence if you actually know them.
+ * `fromJid`'s node is the game server's userid (JIDs are minted as
+ * `${userId}@${domain}`, see authService.ts), so `downloadContactById` maps
+ * it back to a phone number without the requester needing to tell us one.
+ */
+async function handleIncomingSubscriptionRequest(fromJid: string): Promise<void> {
+  const connection = getConnection();
+  if (!connection || !isConnected()) return;
+
+  const userId = Number(Strophe.getNodeFromJid(fromJid));
+  if (!Number.isFinite(userId)) return;
+
+  try {
+    const result = await contactLookupApi.downloadContactById(userId);
+    const phone = result ? Number(result.phone) : null;
+    const existing = phone !== null && Number.isFinite(phone) ? await getContactByNumber(phone) : null;
+
+    if (!existing) {
+      roster.sendPresenceUnsubscribed(connection, fromJid);
+      return;
+    }
+
+    roster.sendRosterAdd(
+      connection,
+      fromJid,
+      existing.PHONEBOOK_CONTACT_NAME ?? existing.CONTACT_NAME ?? undefined,
+    );
+    // Accept, and reciprocate — see the plan's "reciprocal subscribe on
+    // accept" design note: accepting only lets *them* see *our* presence;
+    // subscribing back is what gets this relationship to subscription='both'
+    // without depending on the other side's own lazy discovery ever firing.
+    roster.sendPresenceSubscribed(connection, fromJid);
+    roster.sendPresenceSubscribe(connection, fromJid);
+
+    if (result && phone !== null && (!existing.JEWELCHAT_ID || !existing.JID)) {
+      await attachJewelchatIdentity({
+        contactNumber: phone,
+        jewelchatId: result.jewelchatId,
+        jid: fromJid,
+        statusMsg: result.status,
+      });
+    }
+  } catch (error) {
+    if (__DEV__) console.log('[chatService] handleIncomingSubscriptionRequest failed:', error);
+  }
+}
+
+/**
+ * Best-effort roster add + outgoing subscribe — no offline queue, same "a
+ * screen/service calling this while disconnected sees nothing happen"
+ * posture as sendTypingIndicator/the group-management functions below, since
+ * this is protocol housekeeping, not a user-facing send needing a retry
+ * guarantee.
+ */
+export function addToRosterAndSubscribe(jid: string, name?: string): void {
+  const connection = getConnection();
+  if (!connection || !isConnected()) return;
+  roster.sendRosterAdd(connection, jid, name);
+  roster.sendPresenceSubscribe(connection, jid);
+}
+
+/**
+ * Resolves a chat-list row for a sender we have no Contact data for beyond
+ * their JID — a bare Contact row already exists for it (written the moment
+ * the message arrived, see stropheEvents.ts/persistArchivedMessage), so
+ * ChatListScreen shows it as "Unknown User" until this fills it in. Mirrors
+ * handleIncomingSubscriptionRequest's phone-number-gated trust model, just
+ * triggered by opening the chat (ChatListScreen.openConversation) instead of
+ * an incoming presence subscribe request: look the JID up on the game
+ * server, merge in any pre-existing phonebook-only row for that phone
+ * number, and only add to the roster + subscribe if that phonebook match
+ * was actually found — never for a genuine stranger.
+ */
+export async function resolveUnknownSender(jid: string): Promise<void> {
+  const userId = Number(Strophe.getNodeFromJid(jid));
+  if (!Number.isFinite(userId)) return;
+
+  try {
+    const result = await contactLookupApi.downloadContactById(userId);
+    if (!result) return;
+
+    // Deliberately not setting CONTACT_NAME from result.name — matches the
+    // existing product rule in identityService.ts ("the game server's own
+    // name field is fetched but deliberately never shown"). ON CONFLICT
+    // (JID) updates the bare row in place; it does not insert a second row.
+    await upsertContact({
+      JEWELCHAT_ID: result.jewelchatId,
+      JID: jid,
+      CONTACT_NUMBER: null,
+      CONTACT_NAME: null,
+      PHONEBOOK_CONTACT_NAME: null,
+      IS_GROUP: 0,
+      STATUS_MSG: result.status,
+      IS_REGIS: 1,
+      IS_GROUP_ADMIN: null,
+      IS_INVITED: 0,
+      IS_BLOCKED: 0,
+      IS_PHONEBOOK_CONTACT: 0,
+      LAST_MSG_CREATED_TIME: null,
+      MSG_TYPE: null,
+      MSG_TEXT: null,
+      SMALL_IMAGE: null,
+      IMAGE_PATH: null,
+    });
+
+    const phone = Number(result.phone);
+    if (Number.isFinite(phone)) {
+      await mergePhonebookContactIntoJid(jid, phone);
+      const merged = await getContactByJid(jid);
+      if (merged?.PHONEBOOK_CONTACT_NAME) {
+        addToRosterAndSubscribe(jid, merged.PHONEBOOK_CONTACT_NAME);
+      }
+    }
+    notifyRoom(jid);
+  } catch (error) {
+    if (__DEV__) console.log('[chatService] resolveUnknownSender failed:', error);
+  }
+}
+
+/**
+ * One-time catch-up for contacts whose JewelChat identity was resolved
+ * *before* roster/presence-subscription support existed —
+ * contactSyncService.resolveContactOnTap only triggers addToRosterAndSubscribe
+ * at the moment of first resolution, so anything resolved earlier needs this
+ * explicit backfill. Gated by rosterSlice.backfillComplete (persisted) so it
+ * only ever runs once ever, not on every reconnect — same one-shot pattern as
+ * authService.refreshAchievements. Run from connect()'s own 'connected'
+ * handler (not authService) so it's never racing a not-yet-established
+ * connection — addToRosterAndSubscribe silently no-ops while disconnected,
+ * which would otherwise let this mark itself complete having sent nothing.
+ */
+async function backfillRosterSubscriptions(): Promise<void> {
+  if (store.getState().roster.backfillComplete) return;
+  try {
+    const contacts = await getResolvedPhonebookContacts();
+    for (const contact of contacts) {
+      if (!contact.JID) continue;
+      addToRosterAndSubscribe(contact.JID, contact.CONTACT_NAME ?? contact.PHONEBOOK_CONTACT_NAME ?? undefined);
+    }
+    store.dispatch(backfillMarkedComplete());
+  } catch (error) {
+    if (__DEV__) console.log('[chatService] backfillRosterSubscriptions failed:', error);
+  }
 }
 
 /**
@@ -187,6 +356,7 @@ export function connect(jid: string, password: string): void {
         broadcastPresence();
         void timeSyncService.syncServerTimeDelta();
         void syncGroupRooms();
+        void backfillRosterSubscriptions();
       }
     });
   }
@@ -362,6 +532,18 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
   if (existing) return false;
 
   const isOwnSentMessage = isOwnGroupMessage || message.creatorJid === myJid;
+
+  // Same gap as stropheEvents.ts's live handleMessageStanza: a backfilled
+  // 1:1 message for a JID with no Contact row would insert into ChatMessage
+  // fine but leave incrementUnreadCount/updateLastMessagePreview below as
+  // silent no-ops, making it invisible to the Contact-only chat list.
+  // insertBareContactIfMissing (a single `ON CONFLICT DO NOTHING` INSERT) is
+  // used instead of a read-first check for the same reason as in
+  // stropheEvents.ts — one round trip, never overwrites a known contact.
+  if (!message.isGroupMsg) {
+    await insertBareContactIfMissing(message.chatRoomJid);
+  }
+
   await insertIncomingMessage({
     IS_GROUP_MSG: message.isGroupMsg ? 1 : 0,
     MSG_TYPE: message.msgType,
@@ -388,7 +570,7 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
     IS_FORWARD: 0,
     MEDIA_WIDTH: null,
     MEDIA_HEIGHT: null,
-    MEDIA_DURATION_MS: null,
+    MEDIA_DURATION_MS: message.mediaDurationMs,
     MEDIA_SIZE_BYTES: null,
     MEDIA_MIME: null,
   });
@@ -730,7 +912,7 @@ async function sendPreparedMediaMessage(
   placeholderText: string,
 ): Promise<ChatMessage> {
   const now = Date.now();
-  const kind = msgType === MSG_TYPE.VIDEO ? 'video' : 'image';
+  const kind = msgType === MSG_TYPE.VIDEO ? 'video' : msgType === MSG_TYPE.VOICE ? 'voice' : 'image';
 
   const message = await insertOutgoingMessage({
     IS_GROUP_MSG: params.isGroupMsg ? 1 : 0,
@@ -776,6 +958,10 @@ export function sendVideoMessage(params: SendPreparedMediaParams): Promise<ChatM
   return sendPreparedMediaMessage(params, MSG_TYPE.VIDEO, 'Video');
 }
 
+export function sendVoiceMessage(params: SendPreparedMediaParams): Promise<ChatMessage> {
+  return sendPreparedMediaMessage(params, MSG_TYPE.VOICE, 'Voice message');
+}
+
 /** Rebuilds a PreparedUpload from a row's own columns — used by both the initial send and every resume attempt. */
 function preparedUploadFromRow(message: ChatMessage): PreparedUpload {
   return {
@@ -785,7 +971,13 @@ function preparedUploadFromRow(message: ChatMessage): PreparedUpload {
     height: message.MEDIA_HEIGHT,
     durationMs: message.MEDIA_DURATION_MS,
     sizeBytes: message.MEDIA_SIZE_BYTES ?? 0,
-    mimeType: message.MEDIA_MIME ?? (message.MSG_TYPE === MSG_TYPE.VIDEO ? 'video/mp4' : 'image/jpeg'),
+    mimeType:
+      message.MEDIA_MIME ??
+      (message.MSG_TYPE === MSG_TYPE.VIDEO
+        ? 'video/mp4'
+        : message.MSG_TYPE === MSG_TYPE.VOICE
+          ? 'audio/m4a'
+          : 'image/jpeg'),
   };
 }
 
@@ -797,7 +989,7 @@ function preparedUploadFromRow(message: ChatMessage): PreparedUpload {
  * launch), not a retry timer here. Exported so FailedCaption's retry
  * handler (ChatDetailScreen) can re-run it directly on tap.
  */
-export async function uploadAndSendMedia(message: ChatMessage, kind: 'image' | 'video'): Promise<void> {
+export async function uploadAndSendMedia(message: ChatMessage, kind: 'image' | 'video' | 'voice'): Promise<void> {
   const prepared = preparedUploadFromRow(message);
 
   try {
@@ -831,7 +1023,8 @@ export async function uploadAndSendMedia(message: ChatMessage, kind: 'image' | '
 export async function resumePendingMediaUploads(): Promise<void> {
   const pending = await getPendingMediaUploads();
   for (const message of pending) {
-    const kind = message.MSG_TYPE === MSG_TYPE.VIDEO ? 'video' : 'image';
+    const kind =
+      message.MSG_TYPE === MSG_TYPE.VIDEO ? 'video' : message.MSG_TYPE === MSG_TYPE.VOICE ? 'voice' : 'image';
     void uploadAndSendMedia(message, kind);
   }
 }
@@ -847,8 +1040,13 @@ export async function retryFailedMessage(message: ChatMessage): Promise<void> {
   await markError(message._ID, false);
   if (message.CHAT_ROOM_JID) notifyRoom(message.CHAT_ROOM_JID);
 
-  if (message.MSG_TYPE === MSG_TYPE.IMAGE || message.MSG_TYPE === MSG_TYPE.VIDEO) {
-    const kind = message.MSG_TYPE === MSG_TYPE.VIDEO ? 'video' : 'image';
+  if (
+    message.MSG_TYPE === MSG_TYPE.IMAGE ||
+    message.MSG_TYPE === MSG_TYPE.VIDEO ||
+    message.MSG_TYPE === MSG_TYPE.VOICE
+  ) {
+    const kind =
+      message.MSG_TYPE === MSG_TYPE.VIDEO ? 'video' : message.MSG_TYPE === MSG_TYPE.VOICE ? 'voice' : 'image';
     await uploadAndSendMedia(message, kind);
     return;
   }

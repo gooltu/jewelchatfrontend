@@ -4,6 +4,7 @@
 import * as Contacts from 'expo-contacts/legacy';
 import * as contactRepository from '@database/contactRepository';
 import * as contactLookupApi from '@gameserver/contactLookupApi';
+import * as chatService from './chatService';
 import { COUNTRY_CODE, getStoredDomain } from './authService';
 import type { Contact } from '@app-types/chat';
 
@@ -84,6 +85,14 @@ export async function resolveContactOnTap(contact: Contact): Promise<ResolveCont
     jid,
     statusMsg: result.status,
   });
+
+  // This device's first-ever discovery that this phonebook contact is a
+  // JewelChat user — the one moment to tell the XMPP server about the new
+  // relationship. Fire-and-forget, best-effort, matching every other XMPP
+  // housekeeping call in this codebase (see roster-presence-subscriptions
+  // plan). Naturally fires only once per contact: the early-return above
+  // short-circuits every subsequent tap once JEWELCHAT_ID/JID are set.
+  chatService.addToRosterAndSubscribe(jid, contact.CONTACT_NAME ?? contact.PHONEBOOK_CONTACT_NAME ?? undefined);
 
   return { outcome: 'chat', jid };
 }

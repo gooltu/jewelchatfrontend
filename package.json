@@ -14,6 +14,7 @@
     "axios": "^1.20.0",
     "expo": "~57.0.18",
     "expo-asset": "~57.0.15",
+    "expo-audio": "~57.0.5",
     "expo-blur": "~57.0.2",
     "expo-constants": "~57.0.16",
     "expo-contacts": "~57.0.4",

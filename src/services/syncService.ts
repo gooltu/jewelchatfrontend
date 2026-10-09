@@ -4,6 +4,7 @@ import { withMediaElement, withActiveChatState } from '../chatserver/receiptStan
 import {
   getPendingOutgoingMessages,
   markError,
+  markSubmitted,
 } from '../database/messageRepository';
 import { MSG_TYPE, type ChatMessage } from '../types/chat';
 
@@ -17,6 +18,20 @@ import { MSG_TYPE, type ChatMessage } from '../types/chat';
 const MAX_ATTEMPTS = 5;
 const BASE_RETRY_DELAY_MS = 2_000;
 const MAX_RETRY_DELAY_MS = 20_000;
+
+/**
+ * Set once by chatService.ts (same `set*Provider` callback-registration
+ * pattern as gameserver/client.ts's setAuthTokenProvider — avoids a
+ * circular import, since chatService.ts already imports from this module).
+ * Lets attemptSend tell the UI layer to re-read a room's messages right
+ * after markSubmitted below, the same way chatService's own notifyRoom
+ * calls do after every other DB write.
+ */
+let submittedListener: ((chatRoomJid: string) => void) | null = null;
+
+export function setSubmittedListener(listener: (chatRoomJid: string) => void): void {
+  submittedListener = listener;
+}
 
 interface RetryState {
   attempts: number;
@@ -73,12 +88,14 @@ async function attemptSend(message: ChatMessage): Promise<void> {
       message.MSG_TYPE === MSG_TYPE.STICKER ||
       message.MSG_TYPE === MSG_TYPE.GIF ||
       message.MSG_TYPE === MSG_TYPE.IMAGE ||
-      message.MSG_TYPE === MSG_TYPE.VIDEO
+      message.MSG_TYPE === MSG_TYPE.VIDEO ||
+      message.MSG_TYPE === MSG_TYPE.VOICE
     ) {
       stanza = withMediaElement(stanza, {
         msgType: message.MSG_TYPE,
         link: message.MEDIA_CLOUD ?? '',
         thumbnail: message.MEDIA_CLOUD_THUMBNAIL,
+        duration: message.MSG_TYPE === MSG_TYPE.VOICE ? message.MEDIA_DURATION_MS : null,
       });
     }
 
@@ -86,13 +103,17 @@ async function attemptSend(message: ChatMessage): Promise<void> {
 
     connection.send(stanza.tree());
 
-    // No markSubmitted here — submission is only ever confirmed by the
-    // server's self-echo (handled in stropheEvents.ts), not by send() alone
-    // not throwing. There's deliberately no timeout fallback either: a
-    // message without an echo just stays IS_SUBMITTED=0 until the next
-    // foreground-resume/reconnect calls flushPendingMessages() and this
-    // same attemptSend runs again — harmless, it's a .send() of the same
-    // stanza id, not a new message.
+    // A successful handoff to a connected transport is the "sent" signal
+    // for a 1-1 chat — confirmed (see stropheEvents.ts's group-reflection
+    // comment) that this server never echoes a 1-1 `type="chat"` message
+    // back to its own sender, so waiting on a self-echo there meant
+    // IS_SUBMITTED could never flip and the bubble stayed on the pending
+    // clock forever. Group messages get this immediately too rather than
+    // waiting on MUC-Light's room reflection (stropheEvents.ts's `ownRow`
+    // branch) — harmless if that reflection arrives afterward, since
+    // markSubmitted is idempotent.
+    await markSubmitted(message._ID, Date.now());
+    if (message.CHAT_ROOM_JID) submittedListener?.(message.CHAT_ROOM_JID);
   } catch (err) {
     if (__DEV__) console.log('[attemptSend] threw', err);
     scheduleRetry(message);

@@ -24,6 +24,7 @@ export interface ArchivedMessage {
   msgType: number;
   mediaLink: string | null;
   mediaThumbnail: string | null;
+  mediaDurationMs: number | null;
   timestampMs: number;
   isGroupMsg: boolean;
 }
@@ -198,6 +199,10 @@ function handleResultStanza(
     msgType,
     mediaLink: mediaElem?.getAttribute('link') ?? null,
     mediaThumbnail: mediaElem?.getAttribute('thumbnail') ?? null,
+    mediaDurationMs: (() => {
+      const attr = mediaElem?.getAttribute('duration') ?? null;
+      return attr !== null ? Number(attr) : null;
+    })(),
     timestampMs: stamp ? new Date(stamp).getTime() : Date.now(),
     isGroupMsg,
   });

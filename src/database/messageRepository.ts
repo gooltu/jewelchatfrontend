@@ -364,9 +364,9 @@ export async function getPendingMediaUploads(): Promise<ChatMessage[]> {
   const db = await getDatabase();
   return db.getAllAsync<ChatMessage>(
     `SELECT * FROM ChatMessage
-     WHERE MSG_TYPE IN (?, ?) AND MEDIA_UPLOADED = 0 AND IS_ERROR = 0
+     WHERE MSG_TYPE IN (?, ?, ?) AND MEDIA_UPLOADED = 0 AND IS_ERROR = 0
      ORDER BY SEQUENCE ASC;`,
-    [MSG_TYPE.IMAGE, MSG_TYPE.VIDEO],
+    [MSG_TYPE.IMAGE, MSG_TYPE.VIDEO, MSG_TYPE.VOICE],
   );
 }
 

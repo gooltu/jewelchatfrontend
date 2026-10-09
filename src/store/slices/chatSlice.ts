@@ -29,6 +29,15 @@ interface DraftEntry {
   updatedAt: number;
 }
 
+/** 1:1 peer online/offline state — see ChatDetailScreen's header subtitle. */
+interface PresenceEntry {
+  /** Peer's bare JID — entity adapter id. */
+  jid: string;
+  isOnline: boolean;
+  /** Set whenever isOnline flips to false; null until the first such flip. */
+  lastSeenMs: number | null;
+}
+
 const typingAdapter = createEntityAdapter<TypingEntry, string>({
   selectId: (entry) => entry.jid,
 });
@@ -37,11 +46,16 @@ const draftsAdapter = createEntityAdapter<DraftEntry, string>({
   selectId: (entry) => entry.jid,
 });
 
+const presenceAdapter = createEntityAdapter<PresenceEntry, string>({
+  selectId: (entry) => entry.jid,
+});
+
 interface ChatState {
   activeConversationJid: string | null;
   connectionStatus: XmppConnectionStatus;
   typing: ReturnType<typeof typingAdapter.getInitialState>;
   drafts: ReturnType<typeof draftsAdapter.getInitialState>;
+  presence: ReturnType<typeof presenceAdapter.getInitialState>;
 }
 
 const initialState: ChatState = {
@@ -49,6 +63,7 @@ const initialState: ChatState = {
   connectionStatus: 'disconnected',
   typing: typingAdapter.getInitialState(),
   drafts: draftsAdapter.getInitialState(),
+  presence: presenceAdapter.getInitialState(),
 };
 
 const chatSlice = createSlice({
@@ -82,6 +97,19 @@ const chatSlice = createSlice({
     draftCleared(state, action: PayloadAction<string>) {
       draftsAdapter.removeOne(state.drafts, action.payload);
     },
+    presenceReceived(
+      state,
+      action: PayloadAction<{ jid: string; isOnline: boolean; timestamp: number }>,
+    ) {
+      const existing = state.presence.entities[action.payload.jid];
+      presenceAdapter.upsertOne(state.presence, {
+        jid: action.payload.jid,
+        isOnline: action.payload.isOnline,
+        lastSeenMs: action.payload.isOnline
+          ? existing?.lastSeenMs ?? null
+          : action.payload.timestamp,
+      });
+    },
     /**
      * Called on app backgrounding (see useAppState.ts). connectionStatus/
      * activeConversationJid/typing are all stale the instant the app
@@ -106,6 +134,7 @@ export const {
   typingReceived,
   draftChanged,
   draftCleared,
+  presenceReceived,
   chatSessionReset,
 } = chatSlice.actions;
 
@@ -113,3 +142,4 @@ export default chatSlice.reducer;
 
 export const typingSelectors = typingAdapter.getSelectors<RootState>((state) => state.chat.typing);
 export const draftsSelectors = draftsAdapter.getSelectors<RootState>((state) => state.chat.drafts);
+export const presenceSelectors = presenceAdapter.getSelectors<RootState>((state) => state.chat.presence);

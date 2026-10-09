@@ -12,6 +12,7 @@ import { AppNavigator } from '@navigation/AppNavigator';
 import { FloatingLoadingPanel } from '@components/shared/FloatingLoadingPanel';
 import { getDatabase } from '@database/index';
 import * as authService from '@services/authService';
+import * as deviceSecurityService from '@services/deviceSecurityService';
 // expo-notifications disabled for early development — see app.config.ts.
 // import { useNotificationDeepLinking } from '@notifications/pushNotifications';
 import { useAppState } from '@hooks/useAppState';
@@ -56,6 +57,9 @@ function RootContent() {
     authService.configureGameserverAuth();
     void getDatabase().then(() => setDbReady(true));
     void authService.restoreSession();
+    void deviceSecurityService.checkRootStatus().then((isRooted) => {
+      console.log(`[deviceSecurity] rooted/jailbroken: ${isRooted}`);
+    });
   }, []);
 
   useAppState();

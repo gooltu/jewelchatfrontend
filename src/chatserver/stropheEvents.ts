@@ -27,6 +27,7 @@ import {
   updateLastMessagePreview,
   getContactByJid,
   upsertContact,
+  insertBareContactIfMissing,
   updateGroupName,
   updateGroupAdminFlag,
   deleteContact,
@@ -58,6 +59,8 @@ export interface StropheEventCallbacks {
   onReactionsChanged?: (chatRoomJid: string, senderMsgId: string) => void;
   onTypingChanged?: (chatRoomJid: string, isTyping: boolean) => void;
   onGroupRosterChanged?: (groupJid: string) => void;
+  onPresenceChanged?: (jid: string, isOnline: boolean) => void;
+  onSubscriptionRequest?: (fromJid: string) => void;
 }
 
 /**
@@ -83,6 +86,53 @@ export function registerStanzaHandlers(
     null,
     null,
   );
+
+  connection.addHandler(
+    (stanza) => {
+      handlePresenceStanza(stanza, myJid, callbacks);
+      return true;
+    },
+    null,
+    'presence',
+    null,
+    null,
+    null,
+  );
+}
+
+/**
+ * Single dispatcher branching on the (possibly absent) `type` attribute,
+ * rather than three separate `addHandler` registrations — RFC 6121 overloads
+ * one stanza name for availability *and* subscription management, and this
+ * mirrors that in code. `type` absent or `"unavailable"` -> availability
+ * change (any-resource-available = online, no per-device granularity, same
+ * simplification most 1:1 chat UIs make). `type="subscribe"` -> someone
+ * wants to subscribe to *our* presence. Every other type
+ * (`subscribed`/`unsubscribe`/`unsubscribed`/`probe`/`error`) has no state
+ * this app tracks and is intentionally ignored.
+ */
+function handlePresenceStanza(
+  stanza: Element,
+  myJid: string,
+  callbacks: StropheEventCallbacks,
+): void {
+  const from = stanza.getAttribute('from');
+  if (!from) return;
+  const bareJid = Strophe.getBareJidFromJid(from);
+  if (!bareJid || bareJid === myJid) return; // ignore our own other-resource presence echoes
+
+  // @xmldom/xmldom (polyfilled into react-native-strophe — see its own
+  // header comment) returns `""` for a missing attribute, not `null` like
+  // browser DOM — confirmed directly against this exact package. A
+  // type-less (i.e. "available") presence stanza therefore has
+  // `type === ''`, not `type === null`; normalize here so every other
+  // check in this file can keep treating "absent" as falsy.
+  const type = stanza.getAttribute('type') || null;
+  if (type === 'subscribe') {
+    callbacks.onSubscriptionRequest?.(bareJid);
+  } else if (type === null || type === 'unavailable') {
+    callbacks.onPresenceChanged?.(bareJid, type !== 'unavailable');
+  }
 }
 
 async function handleMessageStanza(
@@ -100,6 +150,15 @@ async function handleMessageStanza(
   // someone else's JID).
   const fromBare = Strophe.getBareJidFromJid(from);
   if (fromBare === myJid) {
+    if (__DEV__) {
+      console.log(
+        '[handleMessageStanza] self-echo candidate: from=%s to=%s id=%s type=%s',
+        from,
+        stanza.getAttribute('to'),
+        stanza.getAttribute('id'),
+        stanza.getAttribute('type'),
+      );
+    }
     await handleSelfEcho(stanza, myJid, callbacks);
     return;
   }
@@ -198,6 +257,25 @@ async function handleMessageStanza(
   const mediaElem = firstChildByTagName(stanza, 'media');
   const mediaLink = mediaElem?.getAttribute('link') ?? null;
   const mediaThumbnail = mediaElem?.getAttribute('thumbnail') ?? null;
+  const mediaDurationAttr = mediaElem?.getAttribute('duration') ?? null;
+  const mediaDurationMs = mediaDurationAttr !== null ? Number(mediaDurationAttr) : null;
+
+  // A 1:1 message from a JID with no Contact row yet would otherwise insert
+  // fine (ChatMessage has no FK/existence check against Contact) while the
+  // incrementUnreadCount/updateLastMessagePreview calls below silently no-op
+  // (`UPDATE ... WHERE JID = ?` matching zero rows) — the message survives,
+  // but the chat list's Contact-only query never surfaces it. Bare row here
+  // (no name/JEWELCHAT_ID yet) is the same "first-seen room" concept already
+  // used for a freshly-discovered group (see the #affiliations handler
+  // below) — the list then displays it as "Unknown User" (ChatListScreen's
+  // name fallback) until chatService.resolveUnknownSender fills it in.
+  // insertBareContactIfMissing is a single `ON CONFLICT DO NOTHING` INSERT,
+  // not a read-first check — one round trip, and structurally incapable of
+  // overwriting a known contact's real data on a message from someone
+  // already in Contact.
+  if (!isGroupMsg) {
+    await insertBareContactIfMissing(chatRoomJid);
+  }
 
   const now = Date.now();
   await insertIncomingMessage({
@@ -226,7 +304,7 @@ async function handleMessageStanza(
     IS_FORWARD: 0,
     MEDIA_WIDTH: null,
     MEDIA_HEIGHT: null,
-    MEDIA_DURATION_MS: null,
+    MEDIA_DURATION_MS: mediaDurationMs,
     MEDIA_SIZE_BYTES: null,
     MEDIA_MIME: null,
   });
@@ -251,12 +329,16 @@ async function handleMessageStanza(
 }
 
 /**
- * Server self-echo: confirms the server accepted a message *we* sent —
+ * Server self-echo, if this server ever sends one for a given stanza —
  * `from`/`to` are swapped relative to a normal incoming message (`from` is
  * our own bare JID, `to` is the peer we originally sent to), and the `id`
- * matches the original SENDER_MSG_ID. This is what actually drives the
- * single-tick (IS_SUBMITTED) transition — not `connection.send()` succeeding
- * without throwing (see syncService.ts).
+ * matches the original SENDER_MSG_ID. **Not actually confirmed to happen
+ * for 1-1 `type="chat"` messages** (see the group-reflection branch's own
+ * comment above, a few lines up in this file, which says the opposite) —
+ * syncService.ts's attemptSend now marks IS_SUBMITTED right after a
+ * successful `connection.send()`, since that's the only signal 1-1 actually
+ * gets. This handler is kept as a harmless, idempotent backstop in case the
+ * server does echo some stanza class back.
  */
 async function handleSelfEcho(
   stanza: Element,

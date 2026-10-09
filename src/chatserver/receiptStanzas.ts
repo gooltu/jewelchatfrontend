@@ -23,14 +23,17 @@ export function buildDisplayedStanza(to: string, id: string): StropheBuilder {
  * wire format from a real prior-working implementation, not a registered
  * XEP. `number` is this app's own MSG_TYPE value, not any other numbering
  * scheme. `thumbnail` is only included when present (e.g. never for
- * stickers/GIFs today, only reserved for a future video kind).
+ * stickers/GIFs today, only reserved for a future video kind). `duration`
+ * (ms) is likewise only included when present — voice notes only; a
+ * receiving device has no other way to learn a voice bubble's length.
  */
 export function withMediaElement(
   builder: StropheBuilder,
-  args: { msgType: number; link: string; thumbnail?: string | null },
+  args: { msgType: number; link: string; thumbnail?: string | null; duration?: number | null },
 ): StropheBuilder {
   const attrs: Record<string, string | number> = { number: args.msgType, link: args.link };
   if (args.thumbnail) attrs.thumbnail = args.thumbnail;
+  if (args.duration != null) attrs.duration = args.duration;
   return builder.up().c('media', attrs);
 }
 

@@ -47,6 +47,7 @@ export type RootStackParamList = {
     | { mode: 'add'; existingGroupJid: string };
   CreateGroupDetails: { members: { jid: string; name: string }[] };
   GroupInfo: { chatRoomJid: string; title: string };
+  ProfileDetail: { chatRoomJid: string; title: string };
   TaskDetail: { taskId: string };
   Factory: undefined;
   Referrals: undefined;

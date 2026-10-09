@@ -503,14 +503,15 @@ export async function restoreSession(): Promise<void> {
   // gameserverClient request either succeeds or 401s into tokenRefresh.ts's
   // attemptRefreshAndRetry, which refreshes-and-retries or calls logout().
   store.dispatch(signedIn({ userId, jid, displayName: 'defaultJCUname' }));
-  chatService.connect(jid, refreshToken);
-  // Safe to run before the XMPP connection is live — upload itself doesn't
-  // need XMPP, and enqueueOutgoingMessage (called once a resumed upload
-  // finishes) already tolerates "not connected yet". This is the only
-  // resume path for a photo/video upload interrupted by the app being
-  // fully killed (not just backgrounded) mid-upload — resyncAfterForeground
-  // never runs on a cold launch.
-  void chatService.resumePendingMediaUploads();
+  // Runs the exact same catch-up as a background->foreground transition
+  // (see useAppState.ts/reconnectChat): connects, flushes the outgoing
+  // queue, resumes any media upload interrupted mid-upload, and backfills
+  // MAM history since the last recorded background time. A cold launch
+  // (app fully killed, not just backgrounded) is otherwise indistinguishable
+  // from "was backgrounded indefinitely," so it needs the same resync —
+  // this used to only call chatService.connect(), which left MAM history
+  // fetched nowhere on a cold launch.
+  void chatService.resyncAfterForeground(jid, refreshToken);
   void refreshGameState();
   // Chained (not fire-and-forget alongside itself) so a bomb whose deadline
   // passed while the app was fully killed — not just backgrounded — still

@@ -13,6 +13,7 @@ import {
 } from '@components/design-system';
 import { useAppSelector } from '@store/hooks';
 import { useAvatarSource } from '@hooks/useAvatarSource';
+import { setTransientBackgroundExpected } from '@hooks/useAppState';
 import * as profilePicService from '@services/profilePicService';
 import { checkMediaCaps } from '@media/mediaUploadService';
 import type { RootScreenProps } from '@navigation/types';
@@ -42,10 +43,19 @@ export function EditProfilePictureScreen({ navigation }: RootScreenProps<'EditPr
   }, [navigation]);
 
   const handleChangePhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 1,
-    });
+    // The picker launches a separate Activity on Android, genuinely
+    // pausing this one — see useAppState.ts's setTransientBackgroundExpected
+    // doc comment for why that must not trigger a chat-session reset.
+    setTransientBackgroundExpected(true);
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 1,
+      });
+    } finally {
+      setTransientBackgroundExpected(false);
+    }
     const asset = result.canceled ? null : result.assets[0];
     if (!asset) return;
 

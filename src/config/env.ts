@@ -34,3 +34,6 @@ export const env = {
   isDevelopment: extra.appEnv === 'development',
   isProduction: extra.appEnv === 'production',
 };
+
+// TEMP: verify a Path B production build actually picked up APP_ENV=production. Remove after checking.
+console.log('[env check]', env.appEnv, env.gameserverUrl, env.chatserverUrl, env.chatserverDomain);

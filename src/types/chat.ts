@@ -131,8 +131,12 @@ export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
  * columns the same way STICKER/GIF do, plus the migration-004 metadata
  * columns (MEDIA_WIDTH/HEIGHT/DURATION_MS/SIZE_BYTES/MIME) — see
  * src/media/mediaUploadService.ts.
+ *
+ * VOICE reuses the same migration-004 columns, but only MEDIA_CLOUD (the S3
+ * key)/MEDIA_DURATION_MS/MEDIA_SIZE_BYTES/MEDIA_MIME — no thumbnail, width,
+ * or height (always null for this kind).
  */
-export const MSG_TYPE = { TEXT: 0, STICKER: 1, GIF: 2, SYSTEM: 3, IMAGE: 4, VIDEO: 5 } as const;
+export const MSG_TYPE = { TEXT: 0, STICKER: 1, GIF: 2, SYSTEM: 3, IMAGE: 4, VIDEO: 5, VOICE: 6 } as const;
 
 /**
  * Chat-game jewel values a real incoming message (never our own) may be

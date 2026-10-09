@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState } from 'react';
+import { Search } from 'lucide-react-native';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -10,6 +11,7 @@ import {
   EmptyState,
   SkeletonRow,
   ButtonPrimary,
+  InputField,
 } from '@components/design-system';
 import { ContactAvatar } from '@components/shared/ContactAvatar';
 import { useSelectableContacts } from '@hooks/useSelectableContacts';
@@ -22,15 +24,38 @@ export function SelectContactScreen({ navigation }: RootScreenProps<'SelectConta
   const styles = useStyles(makeStyles);
   const { contacts, loading } = useSelectableContacts();
   const [resolvingId, setResolvingId] = useState<number | null>(null);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [query, setQuery] = useState('');
   const gamebar = useGamebarStats();
 
   useLayoutEffect(() => {
     const options: AppStackOptions = {
       title: 'Contacts',
-      headerProps: { gamebar },
+      headerProps: {
+        actions: [
+          {
+            key: 'search',
+            label: 'Search contacts',
+            icon: Search,
+            active: searchVisible,
+            onPress: () => setSearchVisible((v) => !v),
+          },
+        ],
+        gamebar,
+      },
     };
     navigation.setOptions(options);
-  }, [navigation, gamebar]);
+  }, [navigation, gamebar, searchVisible]);
+
+  const filtered =
+    searchVisible && query.trim()
+      ? contacts.filter((c) => {
+          const q = query.trim().toLowerCase();
+          const name = (c.CONTACT_NAME ?? c.PHONEBOOK_CONTACT_NAME ?? '').toLowerCase();
+          const phone = String(c.CONTACT_NUMBER ?? '');
+          return name.includes(q) || phone.includes(q.replace(/\D/g, '') || q);
+        })
+      : contacts;
 
   const handlePress = async (contact: Contact) => {
     if (resolvingId !== null) return;
@@ -63,20 +88,36 @@ export function SelectContactScreen({ navigation }: RootScreenProps<'SelectConta
         />
       </View>
 
+      {searchVisible && (
+        <View style={styles.searchWrap}>
+          <InputField
+            icon={Search}
+            placeholder="Search by name or phone"
+            value={query}
+            onChangeText={setQuery}
+            autoFocus
+          />
+        </View>
+      )}
+
       {loading ? (
         <View style={styles.list}>
           {Array.from({ length: 6 }).map((_, index) => (
             <SkeletonRow key={index} />
           ))}
         </View>
-      ) : contacts.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
-          title="No contacts found"
-          description="We couldn't find any contacts on your phone."
+          title={query.trim() ? 'No matches' : 'No contacts found'}
+          description={
+            query.trim()
+              ? `Nothing matches "${query.trim()}". Try a different name or number.`
+              : "We couldn't find any contacts on your phone."
+          }
         />
       ) : (
         <FlatList
-          data={contacts}
+          data={filtered}
           keyExtractor={(item) => String(item._ID)}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
@@ -112,6 +153,7 @@ const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.surface },
     createGroupWrap: { paddingHorizontal: spacing.marginMobile, paddingVertical: spacing.sm },
+    searchWrap: { paddingHorizontal: spacing.marginMobile, paddingVertical: spacing.sm },
     list: { flex: 1 },
     listContent: { paddingBottom: spacing.lg },
     row: {

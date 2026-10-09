@@ -11,6 +11,31 @@ export async function getAllContacts(): Promise<Contact[]> {
   );
 }
 
+/**
+ * Called on every incoming 1:1 message (stropheEvents.ts/chatService.ts's
+ * persistArchivedMessage) to make sure a Contact row exists before the
+ * last-message-preview/unread-count UPDATEs that follow — without one,
+ * those silently no-op and the conversation never surfaces in
+ * getAllContacts(). A single `ON CONFLICT (JID) DO NOTHING` INSERT, not a
+ * read-then-maybe-insert: one SQLite round trip either way (vs. a SELECT
+ * first), and — unlike upsertContact's `DO UPDATE` — structurally incapable
+ * of ever overwriting a known contact's real CONTACT_NAME/STATUS_MSG/
+ * IS_BLOCKED/etc. back to null on a message from someone already known.
+ */
+export async function insertBareContactIfMissing(jid: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT INTO Contact (
+      JEWELCHAT_ID, JID, CONTACT_NUMBER, CONTACT_NAME, PHONEBOOK_CONTACT_NAME,
+      IS_GROUP, STATUS_MSG, IS_REGIS, IS_GROUP_ADMIN, IS_INVITED, IS_BLOCKED,
+      IS_PHONEBOOK_CONTACT, LAST_MSG_CREATED_TIME, MSG_TYPE, MSG_TEXT,
+      SMALL_IMAGE, IMAGE_PATH
+    ) VALUES (NULL, ?, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, 0, 0, NULL, NULL, NULL, NULL, NULL)
+    ON CONFLICT (JID) DO NOTHING;`,
+    [jid],
+  );
+}
+
 /** Contacts eligible for the Select Contact picker — no groups, no blocked contacts. */
 export async function getAllContactsForPicker(): Promise<Contact[]> {
   const db = await getDatabase();
@@ -23,6 +48,18 @@ export async function getAllContactsForPicker(): Promise<Contact[]> {
 export async function getGroupContacts(): Promise<Contact[]> {
   const db = await getDatabase();
   return db.getAllAsync<Contact>(`SELECT * FROM Contact WHERE IS_GROUP = 1;`);
+}
+
+/**
+ * Phonebook contacts whose JewelChat identity has already been resolved
+ * (JID set) — the one-time catch-up set for chatService.backfillRosterSubscriptions,
+ * covering contacts resolved before roster/presence-subscription support existed.
+ */
+export async function getResolvedPhonebookContacts(): Promise<Contact[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<Contact>(
+    `SELECT * FROM Contact WHERE JID IS NOT NULL AND IS_PHONEBOOK_CONTACT = 1;`,
+  );
 }
 
 export async function getContactByJid(jid: string): Promise<Contact | null> {
@@ -138,6 +175,36 @@ export async function attachJewelchatIdentity(entry: {
       IS_REGIS = 1;`,
     [entry.contactNumber, entry.jewelchatId, entry.jid, entry.statusMsg],
   );
+}
+
+/**
+ * The reverse merge direction from attachJewelchatIdentity: here the JID row
+ * already exists (chatService.resolveUnknownSender just resolved a message
+ * sender's identity) and a *separate*, pre-existing phonebook-only row (no
+ * JID yet) might already own this phone number — CONTACT_NUMBER and JID are
+ * independent UNIQUE constraints on the same table, so a plain upsertContact
+ * can't fold one into the other. Deletes the redundant phonebook-only row
+ * and copies its PHONEBOOK_CONTACT_NAME onto the JID row, preserving the JID
+ * row's own _ID/UNREAD_COUNT/LAST_MSG_CREATED_TIME (the conversation's
+ * already-accumulated chat-list metadata). No-op if no such row exists.
+ */
+export async function mergePhonebookContactIntoJid(jid: string, phone: number): Promise<void> {
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
+    const phonebookRow = await db.getFirstAsync<Contact>(
+      `SELECT * FROM Contact WHERE CONTACT_NUMBER = ? AND JID IS NULL;`,
+      [phone],
+    );
+    if (!phonebookRow) return;
+    // Delete before update — a brief moment where neither row holds this
+    // CONTACT_NUMBER, never two at once, since the column has a UNIQUE
+    // constraint.
+    await db.runAsync(`DELETE FROM Contact WHERE _ID = ?;`, [phonebookRow._ID]);
+    await db.runAsync(
+      `UPDATE Contact SET CONTACT_NUMBER = ?, PHONEBOOK_CONTACT_NAME = ?, IS_PHONEBOOK_CONTACT = 1 WHERE JID = ?;`,
+      [phone, phonebookRow.PHONEBOOK_CONTACT_NAME, jid],
+    );
+  });
 }
 
 /** Updates the chat-list preview fields after a new message is sent/received. */

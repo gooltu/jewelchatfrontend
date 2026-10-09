@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useStyles,
   type ThemeColors,
+  type PresenceState,
   spacing,
   ChatListItem,
   EmptyState,
@@ -17,8 +18,13 @@ import { useAvatarSource } from '@hooks/useAvatarSource';
 import { useConversations } from '@hooks/useConversations';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useWalletCounts } from '@hooks/useWalletCounts';
+import { useAppSelector } from '@store/hooks';
+import { presenceSelectors } from '@store/slices/chatSlice';
+import * as chatService from '@services/chatService';
 import type { ChatScreenProps, AppStackOptions } from '@navigation/types';
 import type { Conversation } from '@app-types/chat';
+
+const UNKNOWN_SENDER_LABEL = 'Unknown User';
 
 const crateIcon = require('../../../../assets/jewelbox.png');
 const gemIcon = require('../../../../assets/factory.png');
@@ -54,9 +60,17 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
 
   const openConversation = (conversation: Conversation) => {
     if (!conversation.JID) return;
+    // A bare row (message arrived from a JID we have nothing else on —
+    // stropheEvents.ts upserts this the moment such a message is stored)
+    // gets resolved lazily on open, mirroring resolveContactOnTap's own
+    // "lazy, per-contact, never bulk" discovery timing. Fire-and-forget —
+    // the screen transition doesn't wait on the round trip.
+    if (!conversation.CONTACT_NAME && !conversation.PHONEBOOK_CONTACT_NAME && !conversation.JEWELCHAT_ID) {
+      void chatService.resolveUnknownSender(conversation.JID);
+    }
     navigation.navigate('ChatDetail', {
       chatRoomJid: conversation.JID,
-      title: conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? conversation.JID,
+      title: conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? UNKNOWN_SENDER_LABEL,
       isGroup: conversation.IS_GROUP === 1,
     });
   };
@@ -115,13 +129,22 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
  */
 function ChatListRow({ conversation, onPress }: { conversation: Conversation; onPress: () => void }) {
   const avatarSource = useAvatarSource(conversation.JID);
+  // Group presence isn't a single-person concept (same scope ChatDetailScreen
+  // draws) — only look it up for 1:1 rows.
+  const presenceEntry = useAppSelector((state) =>
+    conversation.IS_GROUP === 1 || !conversation.JID
+      ? undefined
+      : presenceSelectors.selectById(state, conversation.JID),
+  );
+  const presence: PresenceState = !presenceEntry ? 'none' : presenceEntry.isOnline ? 'online' : 'offline';
   return (
     <ChatListItem
-      name={conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? conversation.JID ?? 'Unknown'}
+      name={conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? UNKNOWN_SENDER_LABEL}
       snippet={conversation.MSG_TEXT ?? ''}
       timestamp={formatTimestamp(conversation.LAST_MSG_CREATED_TIME)}
       avatarSource={avatarSource}
       avatarInitials={initialsFor(conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME)}
+      presence={presence}
       unreadCount={conversation.UNREAD_COUNT}
       onPress={onPress}
     />
