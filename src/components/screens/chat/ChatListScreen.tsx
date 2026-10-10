@@ -1,21 +1,27 @@
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import { Edit3, MoreVertical, Search } from 'lucide-react-native';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useStyles,
   type ThemeColors,
   type PresenceState,
   spacing,
+  radius,
+  states,
+  typography,
   ChatListItem,
   EmptyState,
   FloatingButton,
   InputField,
   SkeletonRow,
+  SystemLabel,
 } from '@components/design-system';
 import { JewelStoreSheet } from '@components/shared/JewelStoreSheet';
+import { ConversationActionSheet } from '@components/shared/ConversationActionSheet';
 import { useAvatarSource } from '@hooks/useAvatarSource';
 import { useConversations } from '@hooks/useConversations';
+import { useArchivedConversations } from '@hooks/useArchivedConversations';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useWalletCounts } from '@hooks/useWalletCounts';
 import { useAppSelector } from '@store/hooks';
@@ -26,14 +32,19 @@ import type { Conversation } from '@app-types/chat';
 
 const UNKNOWN_SENDER_LABEL = 'Unknown User';
 
+type ListRow = { kind: 'divider'; label: string } | { kind: 'conversation'; conversation: Conversation };
+
 const crateIcon = require('../../../../assets/jewelbox.png');
 const gemIcon = require('../../../../assets/factory.png');
 
 export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
   const styles = useStyles(makeStyles);
   const { conversations, loading } = useConversations();
+  const { conversations: archivedConversations } = useArchivedConversations();
   const [query, setQuery] = useState('');
   const [jewelStoreVisible, setJewelStoreVisible] = useState(false);
+  const [optionsSheetVisible, setOptionsSheetVisible] = useState(false);
+  const [actionSheetConversation, setActionSheetConversation] = useState<Conversation | null>(null);
   const gamebar = useGamebarStats();
   const wallet = useWalletCounts();
 
@@ -44,7 +55,7 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
         actions: [
           { key: 'crates', label: `${wallet.diamonds} crates`, image: crateIcon, onPress: () => setJewelStoreVisible(true) },
           { key: 'gems', label: `${wallet.coins} gems`, image: gemIcon, onPress: () => navigation.navigate('Factory') },
-          { key: 'more', label: 'Chats options', icon: MoreVertical },
+          { key: 'more', label: 'Chats options', icon: MoreVertical, onPress: () => setOptionsSheetVisible(true) },
         ],
         gamebar,
       },
@@ -57,6 +68,26 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
+
+  // Pinned chats float to a "Pinned" section at the top, most-recently-pinned
+  // first; everything else keeps the query's existing most-recent-message
+  // order. One combined list (not two separate FlatLists) so there's a
+  // single scroll surface, same divider pattern ChatDetailScreen's day
+  // dividers already established.
+  const pinned = useMemo(
+    () => [...filtered.filter((c) => c.IS_PINNED)].sort((a, b) => (b.PINNED_TIME ?? 0) - (a.PINNED_TIME ?? 0)),
+    [filtered],
+  );
+  const rest = useMemo(() => filtered.filter((c) => !c.IS_PINNED), [filtered]);
+  const listRows = useMemo<ListRow[]>(() => {
+    const rows: ListRow[] = [];
+    if (pinned.length > 0) {
+      rows.push({ kind: 'divider', label: 'Pinned' });
+      pinned.forEach((conversation) => rows.push({ kind: 'conversation', conversation }));
+    }
+    rest.forEach((conversation) => rows.push({ kind: 'conversation', conversation }));
+    return rows;
+  }, [pinned, rest]);
 
   const openConversation = (conversation: Conversation) => {
     if (!conversation.JID) return;
@@ -86,6 +117,17 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
         />
       </View>
 
+      {!loading && archivedConversations.length > 0 ? (
+        <Pressable
+          style={({ pressed }) => [styles.archivedRow, pressed && { opacity: states.pressedOpacity }]}
+          onPress={() => navigation.navigate('ArchivedChats')}
+        >
+          <Text style={[typography.bodyMd, styles.archivedRowText]}>
+            {`Archived (${archivedConversations.length})`}
+          </Text>
+        </Pressable>
+      ) : null}
+
       {loading ? (
         <View style={styles.list}>
           {Array.from({ length: 6 }).map((_, index) => (
@@ -103,10 +145,22 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
         />
       ) : (
         <FlatList
-          data={filtered}
-          keyExtractor={(item) => String(item._ID)}
+          data={listRows}
+          keyExtractor={(item) => (item.kind === 'divider' ? item.label : String(item.conversation._ID))}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => <ChatListRow conversation={item} onPress={() => openConversation(item)} />}
+          renderItem={({ item }) =>
+            item.kind === 'divider' ? (
+              <View style={styles.dividerRow}>
+                <SystemLabel text={item.label} />
+              </View>
+            ) : (
+              <ChatListRow
+                conversation={item.conversation}
+                onPress={() => openConversation(item.conversation)}
+                onLongPress={() => setActionSheetConversation(item.conversation)}
+              />
+            )
+          }
         />
       )}
 
@@ -118,7 +172,59 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
       />
 
       <JewelStoreSheet visible={jewelStoreVisible} onClose={() => setJewelStoreVisible(false)} />
+      <ConversationActionSheet
+        visible={!!actionSheetConversation}
+        conversation={actionSheetConversation}
+        onClose={() => setActionSheetConversation(null)}
+      />
+      <ChatsOptionsSheet
+        visible={optionsSheetVisible}
+        onClose={() => setOptionsSheetVisible(false)}
+        onOpenStarred={() => {
+          setOptionsSheetVisible(false);
+          navigation.navigate('StarredMessages');
+        }}
+        onOpenArchived={() => {
+          setOptionsSheetVisible(false);
+          navigation.navigate('ArchivedChats');
+        }}
+      />
     </SafeAreaView>
+  );
+}
+
+/** Header "more" action's menu — just two navigational entries, kept inline rather than a shared component since nothing else uses it. */
+function ChatsOptionsSheet({
+  visible,
+  onClose,
+  onOpenStarred,
+  onOpenArchived,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onOpenStarred: () => void;
+  onOpenArchived: () => void;
+}) {
+  const styles = useStyles(makeStyles);
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <View style={styles.optionsSheet}>
+        <View style={styles.handle} />
+        <Pressable
+          style={({ pressed }) => [styles.optionsRow, pressed && { opacity: states.pressedOpacity }]}
+          onPress={onOpenStarred}
+        >
+          <Text style={[typography.bodyMd, styles.optionsRowText]}>Starred Messages</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.optionsRow, pressed && { opacity: states.pressedOpacity }]}
+          onPress={onOpenArchived}
+        >
+          <Text style={[typography.bodyMd, styles.optionsRowText]}>Archived Chats</Text>
+        </Pressable>
+      </View>
+    </Modal>
   );
 }
 
@@ -127,7 +233,15 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
  * pattern) — useAvatarSource needs real hooks, which a FlatList renderItem
  * callback can't own directly.
  */
-function ChatListRow({ conversation, onPress }: { conversation: Conversation; onPress: () => void }) {
+export function ChatListRow({
+  conversation,
+  onPress,
+  onLongPress,
+}: {
+  conversation: Conversation;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
   const avatarSource = useAvatarSource(conversation.JID);
   // Group presence isn't a single-person concept (same scope ChatDetailScreen
   // draws) — only look it up for 1:1 rows.
@@ -138,16 +252,18 @@ function ChatListRow({ conversation, onPress }: { conversation: Conversation; on
   );
   const presence: PresenceState = !presenceEntry ? 'none' : presenceEntry.isOnline ? 'online' : 'offline';
   return (
-    <ChatListItem
-      name={conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? UNKNOWN_SENDER_LABEL}
-      snippet={conversation.MSG_TEXT ?? ''}
-      timestamp={formatTimestamp(conversation.LAST_MSG_CREATED_TIME)}
-      avatarSource={avatarSource}
-      avatarInitials={initialsFor(conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME)}
-      presence={presence}
-      unreadCount={conversation.UNREAD_COUNT}
-      onPress={onPress}
-    />
+    <Pressable onLongPress={onLongPress} delayLongPress={350}>
+      <ChatListItem
+        name={conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? UNKNOWN_SENDER_LABEL}
+        snippet={conversation.MSG_TEXT ?? ''}
+        timestamp={formatTimestamp(conversation.LAST_MSG_CREATED_TIME)}
+        avatarSource={avatarSource}
+        avatarInitials={initialsFor(conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME)}
+        presence={presence}
+        unreadCount={conversation.UNREAD_COUNT}
+        onPress={onPress}
+      />
+    </Pressable>
   );
 }
 
@@ -178,4 +294,29 @@ const makeStyles = (colors: ThemeColors) =>
       right: spacing.md,
       bottom: spacing.lg,
     },
+    dividerRow: { paddingVertical: spacing.sm },
+    archivedRow: {
+      paddingHorizontal: spacing.marginMobile,
+      paddingVertical: spacing.sm,
+    },
+    archivedRowText: { color: colors.onSurfaceVariant },
+    backdrop: { flex: 1, backgroundColor: colors.backdrop },
+    optionsSheet: {
+      backgroundColor: colors.surfaceContainerHigh,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      paddingTop: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.lg,
+    },
+    handle: {
+      alignSelf: 'center',
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.outline,
+      marginVertical: spacing.sm,
+    },
+    optionsRow: { paddingVertical: spacing.md },
+    optionsRowText: { color: colors.onSurface },
   });

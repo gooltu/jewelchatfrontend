@@ -1,8 +1,9 @@
 import { $msg } from 'react-native-strophe';
 import { getConnection, isConnected, onConnectionStatusChange } from '../chatserver/stropheClient';
-import { withMediaElement, withActiveChatState } from '../chatserver/receiptStanzas';
+import { withMediaElement, withReplyElement, withActiveChatState } from '../chatserver/receiptStanzas';
 import {
   getPendingOutgoingMessages,
+  getMessageById,
   markError,
   markSubmitted,
 } from '../database/messageRepository';
@@ -73,15 +74,19 @@ async function attemptSend(message: ChatMessage): Promise<void> {
   }
 
   try {
-    // `msgtype` is a top-level attribute (not the XMPP `type` attribute,
-    // which is already 'chat'/'groupchat' routing) carrying this app's own
-    // MSG_TYPE explicitly, for both 1-1 and group — not a registered XEP,
-    // same informal-extension convention as the bare <media/> element below.
+    // `msgtype`/`forwarded` are top-level attributes (not the XMPP `type`
+    // attribute, which is already 'chat'/'groupchat' routing) carrying this
+    // app's own MSG_TYPE/IS_FORWARD explicitly, for both 1-1 and group — not
+    // a registered XEP, same informal-extension convention as the bare
+    // <media/> element below. Without `forwarded` making the trip, only the
+    // sender's own local copy would ever render the "Forwarded" label — the
+    // recipient's insertIncomingMessage has no other way to know.
     let stanza = $msg({
       to: message.CHAT_ROOM_JID,
       type: message.IS_GROUP_MSG ? 'groupchat' : 'chat',
       id: message.SENDER_MSG_ID,
       msgtype: String(message.MSG_TYPE ?? MSG_TYPE.TEXT),
+      ...(message.IS_FORWARD ? { forwarded: '1' } : {}),
     }).c('body', {}).t(message.MSG_TEXT ?? '');
 
     if (
@@ -97,6 +102,19 @@ async function attemptSend(message: ChatMessage): Promise<void> {
         thumbnail: message.MEDIA_CLOUD_THUMBNAIL,
         duration: message.MSG_TYPE === MSG_TYPE.VOICE ? message.MEDIA_DURATION_MS : null,
       });
+    }
+
+    if (message.IS_REPLY && message.REPLY_PARENT) {
+      // REPLY_PARENT is this device's own local _ID — meaningless to the
+      // recipient. Resolve to the parent's wire-stable identity (its own
+      // SENDER_MSG_ID + CREATOR_JID, the same tuple getMessageBySenderMsgId
+      // dedups on) before putting anything on the wire. If the parent was
+      // since deleted-for-me, just send the reply with no quote attached
+      // rather than failing the send.
+      const parent = await getMessageById(message.REPLY_PARENT);
+      if (parent?.SENDER_MSG_ID && parent.CREATOR_JID) {
+        stanza = withReplyElement(stanza, { id: parent.SENDER_MSG_ID, creator: parent.CREATOR_JID });
+      }
     }
 
     stanza = withActiveChatState(stanza);

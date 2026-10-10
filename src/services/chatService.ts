@@ -38,6 +38,10 @@ import {
   getMessageById,
   getUnreadMessages,
   getPendingMediaUploads,
+  setStarred,
+  deleteMessage,
+  deleteAllMessagesInRoom,
+  recomputeLastMessagePreview,
 } from '../database/messageRepository';
 import * as mediaUploadService from '@media/mediaUploadService';
 import type { PreparedUpload } from '@media/mediaUploadService';
@@ -56,6 +60,8 @@ import {
   updateGroupName,
   updateGroupAdminFlag,
   deleteContact,
+  setArchived,
+  setPinned,
 } from '../database/contactRepository';
 import { replaceGroupMembers } from '../database/groupMemberRepository';
 import * as contactLookupApi from '../gameserver/contactLookupApi';
@@ -767,6 +773,103 @@ export async function pickJewel(message: ChatMessage): Promise<void> {
   store.dispatch(jewelPicked({ type: message.JEWEL_TYPE }));
   await markJewelPicked(message._ID, true);
   notifyRoom(message.CHAT_ROOM_JID);
+}
+
+/**
+ * Copies `message` into each target room as a brand-new outgoing row
+ * (IS_FORWARD: 1, no reply context — forwarding drops it, standard chat-app
+ * behavior) and sends it through the normal enqueueOutgoingMessage/
+ * attemptSend path. Copies the full media-metadata set (not just the
+ * link/thumbnail) so a forwarded voice note keeps its duration and a
+ * forwarded image/video keeps its dimensions — deliberately does NOT go
+ * through sendImageMessage/sendVoiceMessage etc., since the media is
+ * already hosted (MEDIA_CLOUD) and must not be re-uploaded.
+ */
+export async function forwardMessage(message: ChatMessage, targetJids: string[]): Promise<void> {
+  const myJid = store.getState().auth.jid;
+  if (!myJid) return;
+
+  for (const targetJid of targetJids) {
+    const targetContact = await getContactByJid(targetJid);
+    const isGroupMsg = targetContact?.IS_GROUP === 1;
+    const now = Date.now();
+    const forwarded = await insertOutgoingMessage({
+      IS_GROUP_MSG: isGroupMsg ? 1 : 0,
+      MSG_TYPE: message.MSG_TYPE,
+      CREATED_DATE: new Date(now).toISOString().slice(0, 10),
+      CREATED_TIME: now,
+      CHAT_ROOM_JID: targetJid,
+      CREATOR_JID: myJid,
+      SENDER_NAME: null,
+      TIME_CREATED: now,
+      JEWEL_TYPE: null,
+      IS_JEWEL_PICKED: 0,
+      MSG_TEXT: message.MSG_TEXT,
+      MEDIA_UPLOADED: message.MEDIA_UPLOADED,
+      MEDIA_CLOUD: message.MEDIA_CLOUD,
+      MEDIA_CLOUD_THUMBNAIL: message.MEDIA_CLOUD_THUMBNAIL,
+      IS_REPLY: 0,
+      REPLY_PARENT: null,
+      IS_FORWARD: 1,
+      MEDIA_WIDTH: message.MEDIA_WIDTH,
+      MEDIA_HEIGHT: message.MEDIA_HEIGHT,
+      MEDIA_DURATION_MS: message.MEDIA_DURATION_MS,
+      MEDIA_SIZE_BYTES: message.MEDIA_SIZE_BYTES,
+      MEDIA_MIME: message.MEDIA_MIME,
+    });
+
+    await updateLastMessagePreview(targetJid, {
+      msgText: message.MSG_TEXT,
+      msgType: message.MSG_TYPE,
+      createdTime: now,
+    });
+    notifyRoom(targetJid);
+    enqueueOutgoingMessage(forwarded);
+  }
+}
+
+export async function setConversationArchived(jid: string, archived: boolean): Promise<void> {
+  await setArchived(jid, archived);
+  notifyRoom(jid);
+}
+
+export async function setConversationPinned(jid: string, pinned: boolean): Promise<void> {
+  await setPinned(jid, pinned);
+  notifyRoom(jid);
+}
+
+/**
+ * Local-only ("for me") conversation clear — deletes message history and
+ * clears the chat-list preview, but (deliberately, unlike deleteContact)
+ * leaves the Contact row itself intact, so the conversation reappears
+ * normally — with no earlier history — the moment a new message is sent or
+ * received, same as any contact with no LAST_MSG_CREATED_TIME yet. Distinct
+ * from "Leave group" (GroupInfoScreen), which is server-side and explicit.
+ */
+export async function deleteConversation(jid: string): Promise<void> {
+  await deleteAllMessagesInRoom(jid);
+  await recomputeLastMessagePreview(jid);
+  notifyRoom(jid);
+}
+
+export async function toggleMessageStar(message: ChatMessage): Promise<void> {
+  await setStarred(message._ID, !message.IS_STARRED);
+  if (message.CHAT_ROOM_JID) notifyRoom(message.CHAT_ROOM_JID);
+}
+
+/**
+ * Local-only ("for me") delete — no retraction stanza, available for both
+ * our own and others' messages. Must recompute the room's chat-list preview
+ * afterward: deleteMessage alone would leave Contact's MSG_TEXT/MSG_TYPE/
+ * LAST_MSG_CREATED_TIME pointing at a row that no longer exists if it
+ * happened to be the newest one in the room.
+ */
+export async function deleteMessageForMe(message: ChatMessage): Promise<void> {
+  await deleteMessage(message._ID);
+  if (message.CHAT_ROOM_JID) {
+    await recomputeLastMessagePreview(message.CHAT_ROOM_JID);
+    notifyRoom(message.CHAT_ROOM_JID);
+  }
 }
 
 export interface SendTextMessageParams {

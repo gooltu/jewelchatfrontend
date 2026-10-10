@@ -20,6 +20,9 @@ import { FactoryScreen } from '@components/screens/game/FactoryScreen';
 import { ReferralsScreen } from '@components/screens/profile/ReferralsScreen';
 import { EditProfilePictureScreen } from '@components/screens/profile/EditProfilePictureScreen';
 import { MediaViewerScreen } from '@components/screens/chat/MediaViewerScreen';
+import { ForwardMessageScreen } from '@components/screens/chat/ForwardMessageScreen';
+import { StarredMessagesScreen } from '@components/screens/chat/StarredMessagesScreen';
+import { ArchivedChatsScreen } from '@components/screens/chat/ArchivedChatsScreen';
 import type { RootStackParamList } from './types';
 
 /** Exposed so notifications/pushNotifications.ts can navigate from outside React (deep links). */
@@ -53,6 +56,9 @@ function SignedInNavigator() {
         component={MediaViewerScreen}
         options={{ presentation: 'fullScreenModal', headerShown: false, animation: 'fade' }}
       />
+      <RootStack.Screen name="ForwardMessage" component={ForwardMessageScreen} />
+      <RootStack.Screen name="StarredMessages" component={StarredMessagesScreen} />
+      <RootStack.Screen name="ArchivedChats" component={ArchivedChatsScreen} />
     </RootStack.Navigator>
   );
 }

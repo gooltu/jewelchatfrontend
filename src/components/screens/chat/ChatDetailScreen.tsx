@@ -36,6 +36,7 @@ import { useMessages } from '@hooks/useMessages';
 import { useMessageReactions } from '@hooks/useMessageReactions';
 import { useMediaPicker } from '@hooks/useMediaPicker';
 import { useAvatarSource } from '@hooks/useAvatarSource';
+import { useContact } from '@hooks/useContact';
 import { useDisplayName } from '@hooks/useDisplayName';
 import { setTransientBackgroundExpected } from '@hooks/useAppState';
 import { useKeyboardOffset } from '@hooks/useKeyboardOffset';
@@ -55,10 +56,13 @@ import {
   msToClockString,
   clockStringToMs,
 } from '@media/mediaUploadService';
-import { deriveMessageStatus } from '@database/messageRepository';
+import { deriveMessageStatus, getMessageById } from '@database/messageRepository';
+import { toQuotedContent } from '../../../utils/quotedContent';
 import type { RootScreenProps, AppStackOptions } from '@navigation/types';
 import { MSG_TYPE, type ChatMessage } from '@app-types/chat';
 import { initialsFor } from './ChatListScreen';
+import { MessageActionSheet } from '@components/shared/MessageActionSheet';
+import { ConversationActionSheet } from '@components/shared/ConversationActionSheet';
 
 /**
  * A day-divider is a pure render-time derivation over already-loaded
@@ -155,6 +159,29 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
   const dismissJewelboxFull = useCallback(() => setJewelboxFullVisible(false), []);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const dismissMediaError = useCallback(() => setMediaError(null), []);
+  // The message currently being composed as a reply (swipe-to-reply or the
+  // long-press menu's "Reply" action) — cleared once sent or cancelled.
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  // The message currently showing MessageActionSheet (long-press menu).
+  const [actionSheetMessage, setActionSheetMessage] = useState<ChatMessage | null>(null);
+  // Backs ConversationActionSheet (Pin/Archive/Delete) via the header's
+  // "more" action — needs IS_PINNED/IS_ARCHIVED, not just the route's
+  // chatRoomJid/title/isGroup params.
+  const [conversationSheetVisible, setConversationSheetVisible] = useState(false);
+  const contact = useContact(chatRoomJid);
+  // Composer's reply-bar quote preview only — IMAGE/VIDEO need a real
+  // resolved URI (MEDIA_CLOUD/_THUMBNAIL is an S3 key, not a loadable uri);
+  // sticker/gif/voice/text don't need one, see toQuotedContent's fallback.
+  const replyingToMediaUri = useResolvedMediaUri(
+    replyingTo?.MSG_TYPE === MSG_TYPE.IMAGE
+      ? replyingTo.MEDIA_CLOUD
+      : replyingTo?.MSG_TYPE === MSG_TYPE.VIDEO
+        ? replyingTo.MEDIA_CLOUD_THUMBNAIL
+        : null,
+  );
+  const replyingToSenderName = useDisplayName(
+    isGroup && replyingTo && replyingTo.CREATOR_JID !== myJid ? replyingTo.CREATOR_JID : null,
+  );
   const voiceRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   // Hands the finalized recording off from onRecordingStop to
   // onSendVoiceNote — ChatInputBar's mock only carries duration/waveform
@@ -214,7 +241,12 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
           : () => navigation.navigate('ProfileDetail', { chatRoomJid, title }),
         actions: [
           { key: 'call', label: `Call ${title}`, icon: Phone, disabled: true },
-          { key: 'more', label: 'Conversation options', icon: MoreVertical },
+          {
+            key: 'more',
+            label: 'Conversation options',
+            icon: MoreVertical,
+            onPress: () => setConversationSheetVisible(true),
+          },
         ],
       },
     };
@@ -237,7 +269,9 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
       text: text.trim(),
       senderJid: myJid,
       senderName: null,
+      replyParent: replyingTo?._ID ?? null,
     });
+    setReplyingTo(null);
   };
 
   const handleSendSticker = async (item: PickerMediaItem) => {
@@ -453,6 +487,8 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
               isGroup={isGroup}
               onJewelCapped={handleJewelboxFull}
               navigation={navigation}
+              onReply={setReplyingTo}
+              onLongPressMessage={setActionSheetMessage}
             />
           );
         }}
@@ -501,6 +537,38 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
         {...(previewUri
           ? { previewPlaying: previewStatus.playing, onTogglePreviewPlayback: handleTogglePreviewPlayback }
           : {})}
+        {...(replyingTo
+          ? {
+              replyTo: {
+                senderName:
+                  replyingTo.CREATOR_JID === myJid
+                    ? 'You'
+                    : (isGroup ? replyingToSenderName ?? replyingTo.SENDER_NAME : title) ?? 'Unknown',
+                content: toQuotedContent(replyingTo, replyingToMediaUri),
+              },
+              onCancelReply: () => setReplyingTo(null),
+            }
+          : {})}
+      />
+
+      <MessageActionSheet
+        visible={!!actionSheetMessage}
+        message={actionSheetMessage}
+        onClose={() => setActionSheetMessage(null)}
+        onReply={(message) => {
+          setReplyingTo(message);
+          setActionSheetMessage(null);
+        }}
+        onForward={(message) => {
+          setActionSheetMessage(null);
+          navigation.navigate('ForwardMessage', { message });
+        }}
+      />
+
+      <ConversationActionSheet
+        visible={conversationSheetVisible}
+        conversation={contact}
+        onClose={() => setConversationSheetVisible(false)}
       />
     </SafeAreaView>
   );
@@ -513,6 +581,8 @@ function MessageBubbleRow({
   isGroup,
   onJewelCapped,
   navigation,
+  onReply,
+  onLongPressMessage,
 }: {
   message: ChatMessage;
   navigation: RootScreenProps<'ChatDetail'>['navigation'];
@@ -520,6 +590,8 @@ function MessageBubbleRow({
   myJid: string | null;
   isGroup: boolean;
   onJewelCapped: () => void;
+  onReply: (message: ChatMessage) => void;
+  onLongPressMessage: (message: ChatMessage) => void;
 }) {
   const styles = useStyles(makeStyles);
   const direction = message.CREATOR_JID === myJid ? 'outgoing' : 'incoming';
@@ -566,6 +638,40 @@ function MessageBubbleRow({
     message.MSG_TYPE === MSG_TYPE.VOICE ? message.MEDIA_CLOUD : null,
   );
   const voicePlayback = useVoicePlayback(message._ID, resolvedVoiceUri);
+  // In-bubble reply quote — looked up by local _ID (REPLY_PARENT always
+  // points at this device's own copy, see stropheEvents.ts's resolution on
+  // receipt), not a hook, so it's a small local fetch-on-change effect
+  // rather than a repository hook of its own.
+  const [replyParentMessage, setReplyParentMessage] = useState<ChatMessage | null>(null);
+  useEffect(() => {
+    if (!message.REPLY_PARENT) {
+      // Resets on a REPLY_PARENT change (not an external-system fetch
+      // itself), but still intentional here — same accepted pattern as
+      // useConversations.ts's initial-read effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setReplyParentMessage(null);
+      return;
+    }
+    let cancelled = false;
+    void getMessageById(message.REPLY_PARENT).then((parent) => {
+      if (!cancelled) setReplyParentMessage(parent);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [message.REPLY_PARENT]);
+  const replyParentMediaUri = useResolvedMediaUri(
+    replyParentMessage?.MSG_TYPE === MSG_TYPE.IMAGE
+      ? replyParentMessage.MEDIA_CLOUD
+      : replyParentMessage?.MSG_TYPE === MSG_TYPE.VIDEO
+        ? replyParentMessage.MEDIA_CLOUD_THUMBNAIL
+        : null,
+  );
+  const replyParentSenderName = useDisplayName(
+    isGroup && replyParentMessage && replyParentMessage.CREATOR_JID !== myJid
+      ? replyParentMessage.CREATOR_JID
+      : null,
+  );
   const mediaAspectRatio =
     message.MEDIA_WIDTH && message.MEDIA_HEIGHT
       ? message.MEDIA_WIDTH / message.MEDIA_HEIGHT
@@ -610,10 +716,26 @@ function MessageBubbleRow({
           />
         ) : null}
         <View style={{ alignSelf: direction === 'outgoing' ? 'flex-end' : 'flex-start' }}>
+          {message.IS_FORWARD ? <Text style={styles.forwardedLabel}>Forwarded</Text> : null}
           <MessageBubble
             direction={direction}
             context={isGroup ? 'group' : 'direct'}
             senderName={resolvedSenderName ?? message.SENDER_NAME ?? undefined}
+            onLongPress={() => onLongPressMessage(message)}
+            onSwipeReply={() => onReply(message)}
+            replyTo={
+              message.IS_REPLY && message.REPLY_PARENT
+                ? {
+                    senderName:
+                      replyParentMessage?.CREATOR_JID === myJid
+                        ? 'You'
+                        : (isGroup
+                            ? replyParentSenderName ?? replyParentMessage?.SENDER_NAME
+                            : replyParentMessage?.SENDER_NAME) ?? 'Unknown',
+                    content: toQuotedContent(replyParentMessage, replyParentMediaUri),
+                  }
+                : undefined
+            }
             content={
               message.MSG_TYPE === MSG_TYPE.STICKER
                 ? { kind: 'sticker', source: { uri: message.MEDIA_CLOUD ?? TRANSPARENT_PIXEL_URI } }
@@ -785,6 +907,12 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.error,
       alignSelf: 'flex-end',
       marginBottom: spacing.sm,
+    },
+    forwardedLabel: {
+      ...typography.labelSm,
+      color: colors.onSurfaceVariant,
+      fontStyle: 'italic',
+      marginBottom: spacing.xs,
     },
     uploadSpinnerWrap: {
       position: 'absolute',

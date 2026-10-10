@@ -250,6 +250,7 @@ async function handleMessageStanza(
   // (a stanza from something other than this app's own send path).
   const msgTypeAttr = stanza.getAttribute('msgtype');
   const msgType = msgTypeAttr !== null ? Number(msgTypeAttr) : MSG_TYPE.TEXT;
+  const isForwarded = stanza.getAttribute('forwarded') === '1';
 
   // Bare (non-namespaced) <media/> — confirmed wire format from a real
   // prior-working implementation, not a registered XEP. Absent on plain
@@ -259,6 +260,22 @@ async function handleMessageStanza(
   const mediaThumbnail = mediaElem?.getAttribute('thumbnail') ?? null;
   const mediaDurationAttr = mediaElem?.getAttribute('duration') ?? null;
   const mediaDurationMs = mediaDurationAttr !== null ? Number(mediaDurationAttr) : null;
+
+  // Bare (non-namespaced) <reply/> — carries the quoted parent's own
+  // SENDER_MSG_ID/CREATOR_JID (wire-stable), never a raw local _ID. Resolve
+  // it to *this device's own* local _ID via the same dedup lookup incoming
+  // messages already use — each device ends up with a REPLY_PARENT that
+  // only ever points at its own local copy of the parent row. If the parent
+  // hasn't arrived/was deleted locally, the message still stores fine, just
+  // without a reply reference (toQuotedContent's fallback handles this).
+  const replyElem = firstChildByTagName(stanza, 'reply');
+  const replyParentSenderMsgId = replyElem?.getAttribute('id') || null;
+  const replyParentCreatorJid = replyElem?.getAttribute('creator') || null;
+  let replyParentLocalId: number | null = null;
+  if (replyParentSenderMsgId && replyParentCreatorJid) {
+    const parent = await getMessageBySenderMsgId(chatRoomJid, replyParentCreatorJid, replyParentSenderMsgId);
+    replyParentLocalId = parent?._ID ?? null;
+  }
 
   // A 1:1 message from a JID with no Contact row yet would otherwise insert
   // fine (ChatMessage has no FK/existence check against Contact) while the
@@ -299,9 +316,9 @@ async function handleMessageStanza(
     MEDIA_UPLOADED: 0,
     MEDIA_CLOUD: mediaLink,
     MEDIA_CLOUD_THUMBNAIL: mediaThumbnail,
-    IS_REPLY: 0,
-    REPLY_PARENT: null,
-    IS_FORWARD: 0,
+    IS_REPLY: replyParentLocalId ? 1 : 0,
+    REPLY_PARENT: replyParentLocalId,
+    IS_FORWARD: isForwarded ? 1 : 0,
     MEDIA_WIDTH: null,
     MEDIA_HEIGHT: null,
     MEDIA_DURATION_MS: mediaDurationMs,

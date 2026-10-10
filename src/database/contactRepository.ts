@@ -3,11 +3,19 @@ import type { Contact } from '../types/chat';
 
 /** CRUD for the Contact table — also the source of the conversation list. */
 
-/** Chat list — only contacts with an actual conversation, most recent first. */
+/** Chat list — only contacts with an actual conversation, most recent first. Archived conversations drop out automatically. */
 export async function getAllContacts(): Promise<Contact[]> {
   const db = await getDatabase();
   return db.getAllAsync<Contact>(
-    `SELECT * FROM Contact WHERE LAST_MSG_CREATED_TIME IS NOT NULL ORDER BY LAST_MSG_CREATED_TIME DESC;`,
+    `SELECT * FROM Contact WHERE LAST_MSG_CREATED_TIME IS NOT NULL AND IS_ARCHIVED = 0 ORDER BY LAST_MSG_CREATED_TIME DESC;`,
+  );
+}
+
+/** Archived conversations — backs ArchivedChatsScreen. */
+export async function getArchivedContacts(): Promise<Contact[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<Contact>(
+    `SELECT * FROM Contact WHERE LAST_MSG_CREATED_TIME IS NOT NULL AND IS_ARCHIVED = 1 ORDER BY LAST_MSG_CREATED_TIME DESC;`,
   );
 }
 
@@ -86,7 +94,7 @@ export async function getContactByNumber(contactNumber: number): Promise<Contact
 
 /** Insert a new contact, or update the mutable fields if the JID already exists. */
 export async function upsertContact(
-  contact: Omit<Contact, '_ID' | 'UNREAD_COUNT'>,
+  contact: Omit<Contact, '_ID' | 'UNREAD_COUNT' | 'IS_ARCHIVED' | 'IS_PINNED' | 'PINNED_TIME'>,
 ): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
@@ -249,6 +257,20 @@ export async function resetUnreadCount(jid: string): Promise<void> {
 export async function setBlocked(jid: string, isBlocked: boolean): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(`UPDATE Contact SET IS_BLOCKED = ? WHERE JID = ?;`, [isBlocked ? 1 : 0, jid]);
+}
+
+export async function setArchived(jid: string, archived: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`UPDATE Contact SET IS_ARCHIVED = ? WHERE JID = ?;`, [archived ? 1 : 0, jid]);
+}
+
+export async function setPinned(jid: string, pinned: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`UPDATE Contact SET IS_PINNED = ?, PINNED_TIME = ? WHERE JID = ?;`, [
+    pinned ? 1 : 0,
+    pinned ? Date.now() : null,
+    jid,
+  ]);
 }
 
 export async function deleteContact(jid: string): Promise<void> {

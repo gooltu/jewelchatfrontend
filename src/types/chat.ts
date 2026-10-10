@@ -24,6 +24,9 @@ export interface Contact {
   MSG_TEXT: string | null;
   SMALL_IMAGE: string | null;
   IMAGE_PATH: string | null;
+  IS_ARCHIVED: number;
+  IS_PINNED: number;
+  PINNED_TIME: number | null;
 }
 
 /** A `Contact` row rendered as a chat-list entry — same shape, different lens. */
@@ -62,6 +65,7 @@ export interface ChatMessage {
   MEDIA_DURATION_MS: number | null;
   MEDIA_SIZE_BYTES: number | null;
   MEDIA_MIME: string | null;
+  IS_STARRED: number;
 }
 
 export interface GroupMember {

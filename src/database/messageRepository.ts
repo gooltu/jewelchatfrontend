@@ -110,6 +110,7 @@ export async function insertOutgoingMessage(
     | 'IS_READ'
     | 'TIME_READ'
     | 'IS_ERROR'
+    | 'IS_STARRED'
   >,
 ): Promise<ChatMessage> {
   const db = await getDatabase();
@@ -120,8 +121,8 @@ export async function insertOutgoingMessage(
       IS_GROUP_MSG, MSG_TYPE, CREATED_DATE, CREATED_TIME, CHAT_ROOM_JID, CREATOR_JID,
       SENDER_NAME, IS_READ, IS_DELIVERED, IS_SUBMITTED, TIME_CREATED,
       IS_ERROR, JEWEL_TYPE, IS_JEWEL_PICKED, MSG_TEXT, MEDIA_UPLOADED, MEDIA_CLOUD,
-      MEDIA_CLOUD_THUMBNAIL, SEQUENCE, IS_REPLY, REPLY_PARENT, IS_FORWARD
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      MEDIA_CLOUD_THUMBNAIL, SEQUENCE, IS_REPLY, REPLY_PARENT, IS_FORWARD, IS_STARRED
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
     [
       message.IS_GROUP_MSG,
       message.MSG_TYPE,
@@ -165,7 +166,7 @@ export async function insertOutgoingMessage(
  * dedup — a redelivered stanza is a silent no-op via `OR IGNORE`.
  */
 export async function insertIncomingMessage(
-  message: Omit<ChatMessage, '_ID' | 'SEQUENCE' | 'IS_SUBMITTED' | 'TIME_SUBMITTED'>,
+  message: Omit<ChatMessage, '_ID' | 'SEQUENCE' | 'IS_SUBMITTED' | 'TIME_SUBMITTED' | 'IS_STARRED'>,
 ): Promise<void> {
   const db = await getDatabase();
   const sequence = await getNextSequence(message.CHAT_ROOM_JID ?? '');
@@ -176,8 +177,8 @@ export async function insertIncomingMessage(
       SENDER_NAME, SENDER_MSG_ID, IS_READ, TIME_READ, IS_DELIVERED, TIME_DELIVERED,
       IS_SUBMITTED, TIME_CREATED, IS_ERROR, JEWEL_TYPE, IS_JEWEL_PICKED, MSG_TEXT,
       MEDIA_UPLOADED, MEDIA_CLOUD, MEDIA_CLOUD_THUMBNAIL, SEQUENCE, IS_REPLY,
-      REPLY_PARENT, IS_FORWARD
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      REPLY_PARENT, IS_FORWARD, IS_STARRED
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
     [
       message.IS_GROUP_MSG,
       message.MSG_TYPE,
@@ -327,6 +328,50 @@ export async function markJewelPicked(id: number, picked: boolean): Promise<void
     picked ? 1 : 0,
     id,
   ]);
+}
+
+export async function setStarred(id: number, starred: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`UPDATE ChatMessage SET IS_STARRED = ? WHERE _ID = ?;`, [starred ? 1 : 0, id]);
+}
+
+/** Every starred message across every conversation, newest first — backs StarredMessagesScreen. */
+export async function getStarredMessages(): Promise<ChatMessage[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<ChatMessage>(
+    `SELECT * FROM ChatMessage WHERE IS_STARRED = 1 ORDER BY CREATED_TIME DESC;`,
+  );
+}
+
+export async function deleteMessage(id: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`DELETE FROM ChatMessage WHERE _ID = ?;`, [id]);
+}
+
+/** Clears a room's entire message history — backs "Delete conversation" (local-only). */
+export async function deleteAllMessagesInRoom(chatRoomJid: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`DELETE FROM ChatMessage WHERE CHAT_ROOM_JID = ?;`, [chatRoomJid]);
+}
+
+/**
+ * Re-derives a room's chat-list preview from whatever ChatMessage row is now
+ * actually the newest, after a delete — updateLastMessagePreview itself is a
+ * dumb "write these literal values" setter with no re-query of its own, so
+ * without this a deleted-message's stale text/type/timestamp would keep
+ * showing in the chat list forever. Clears the preview entirely if no
+ * messages remain in the room.
+ */
+export async function recomputeLastMessagePreview(chatRoomJid: string): Promise<void> {
+  const db = await getDatabase();
+  const latest = await db.getFirstAsync<ChatMessage>(
+    `SELECT * FROM ChatMessage WHERE CHAT_ROOM_JID = ? ORDER BY SEQUENCE DESC LIMIT 1;`,
+    [chatRoomJid],
+  );
+  await db.runAsync(
+    `UPDATE Contact SET MSG_TEXT = ?, MSG_TYPE = ?, LAST_MSG_CREATED_TIME = ? WHERE JID = ?;`,
+    [latest?.MSG_TEXT ?? null, latest?.MSG_TYPE ?? null, latest?.CREATED_TIME ?? null, chatRoomJid],
+  );
 }
 
 export async function getPendingOutgoingMessages(): Promise<ChatMessage[]> {

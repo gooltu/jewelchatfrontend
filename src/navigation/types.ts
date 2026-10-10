@@ -2,6 +2,7 @@ import type { NativeStackScreenProps, NativeStackNavigationOptions } from '@reac
 import type { BottomTabScreenProps, BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 import type { HeaderProps } from '@components/design-system';
+import type { ChatMessage } from '@app-types/chat';
 
 export type AuthStackParamList = {
   Splash: undefined;
@@ -61,6 +62,9 @@ export type RootStackParamList = {
   MediaViewer:
     | { kind: 'image'; key: string }
     | { kind: 'video'; key: string; thumbnailKey: string | null };
+  ForwardMessage: { message: ChatMessage };
+  StarredMessages: undefined;
+  ArchivedChats: undefined;
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<

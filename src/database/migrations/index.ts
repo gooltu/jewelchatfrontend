@@ -3,6 +3,7 @@ import * as m001 from './001_initial';
 import * as m002 from './002_message_receipt';
 import * as m003 from './003_resolved_identity';
 import * as m004 from './004_media_metadata';
+import * as m005 from './005_message_conversation_actions';
 
 /**
  * Ordered list of migrations, applied sequentially against
@@ -14,4 +15,5 @@ export const migrations: { version: number; up: (db: SQLiteDatabase) => Promise<
   { version: m002.version, up: m002.up },
   { version: m003.version, up: m003.up },
   { version: m004.version, up: m004.up },
+  { version: m005.version, up: m005.up },
 ];

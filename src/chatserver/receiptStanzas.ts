@@ -37,6 +37,21 @@ export function withMediaElement(
   return builder.up().c('media', attrs);
 }
 
+/**
+ * Appends the bare (non-namespaced) `<reply/>` sibling element — same
+ * informal-extension convention as `<media/>` above, not a registered XEP.
+ * `id`/`creator` are the quoted parent's own SENDER_MSG_ID/CREATOR_JID, not
+ * this device's local ChatMessage._ID (which is meaningless on the
+ * receiving device) — see stropheEvents.ts's resolution back to a local
+ * _ID on receipt.
+ */
+export function withReplyElement(
+  builder: StropheBuilder,
+  args: { id: string; creator: string },
+): StropheBuilder {
+  return builder.up().c('reply', { id: args.id, creator: args.creator });
+}
+
 /** Appends the trailing chat-state every outgoing message sends, signaling "no longer composing". */
 export function withActiveChatState(builder: StropheBuilder): StropheBuilder {
   return builder.up().c('active', { xmlns: CHAT_STATES_NS });
