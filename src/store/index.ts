@@ -19,6 +19,7 @@ import childrenReducer from './slices/childrenSlice';
 import factoryReducer from './slices/factorySlice';
 import gameReducer from './slices/gameSlice';
 import inviteesReducer from './slices/inviteesSlice';
+import jewelPoolReducer from './slices/jewelPoolSlice';
 import loadingReducer from './slices/loadingSlice';
 import rosterReducer from './slices/rosterSlice';
 import taskElementsReducer from './slices/taskElementsSlice';
@@ -35,6 +36,7 @@ const rootReducer = combineReducers({
   factory: factoryReducer,
   game: gameReducer,
   invitees: inviteesReducer,
+  jewelPool: jewelPoolReducer,
   loading: loadingReducer,
   roster: rosterReducer,
   taskElements: taskElementsReducer,
@@ -78,6 +80,12 @@ const persistConfig = {
   //    is the per-user counterpart to `factory` and gets the same ephemeral
   //    treatment as `tasks` — refetched every login/foreground, not
   //    persisted.
+  //  - `jewelPool` (the local draw-down queue of server-issued jewels fed by
+  //    GET /getJewels — see jewelPoolService.ts) IS persisted, unlike most
+  //    ephemeral/reactive slices here: unredeemed inventory shouldn't be
+  //    wasted on relaunch, and `lastFetchedAt` must survive a kill for its
+  //    15-minute minimum gap between /getJewels calls to actually hold as a
+  //    rate limit rather than just a same-session guard.
   //  - `loading` (FloatingLoadingPanel's activeCount/message — see
   //    loadingService.ts) is transient by definition: persisting a stuck
   //    "loading" state across an app relaunch would show a permanent
@@ -99,7 +107,16 @@ const persistConfig = {
   //    chatService.backfillRosterSubscriptions — must survive relaunch, or
   //    the one-time roster/presence-subscription backfill would re-run
   //    (harmlessly, but needlessly) on every cold launch forever.
-  whitelist: ['theme', 'game', 'factory', 'achievements', 'invitees', 'children', 'roster'],
+  whitelist: [
+    'theme',
+    'game',
+    'factory',
+    'achievements',
+    'invitees',
+    'children',
+    'roster',
+    'jewelPool',
+  ],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

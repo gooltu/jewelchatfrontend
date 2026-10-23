@@ -15,6 +15,10 @@ module.exports = {
     '^@app-types/(.*)$': '<rootDir>/src/types/$1',
     '^@config/(.*)$': '<rootDir>/src/config/$1',
     '^@media/(.*)$': '<rootDir>/src/media/$1',
+    // jest-expo's "react-native" export condition otherwise resolves immer
+    // (a @reduxjs/toolkit dependency) to its unparsable legacy-esm build —
+    // force the CJS build any time a slice/toolkit import pulls it in.
+    '^immer$': '<rootDir>/node_modules/immer/dist/cjs/index.js',
   },
   transformIgnorePatterns: [
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)',

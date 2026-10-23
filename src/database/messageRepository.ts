@@ -120,9 +120,9 @@ export async function insertOutgoingMessage(
     `INSERT INTO ChatMessage (
       IS_GROUP_MSG, MSG_TYPE, CREATED_DATE, CREATED_TIME, CHAT_ROOM_JID, CREATOR_JID,
       SENDER_NAME, IS_READ, IS_DELIVERED, IS_SUBMITTED, TIME_CREATED,
-      IS_ERROR, JEWEL_TYPE, IS_JEWEL_PICKED, MSG_TEXT, MEDIA_UPLOADED, MEDIA_CLOUD,
+      IS_ERROR, JEWEL_TYPE, JEWEL_CODE, IS_JEWEL_PICKED, MSG_TEXT, MEDIA_UPLOADED, MEDIA_CLOUD,
       MEDIA_CLOUD_THUMBNAIL, SEQUENCE, IS_REPLY, REPLY_PARENT, IS_FORWARD, IS_STARRED
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
     [
       message.IS_GROUP_MSG,
       message.MSG_TYPE,
@@ -133,6 +133,7 @@ export async function insertOutgoingMessage(
       message.SENDER_NAME,
       message.TIME_CREATED,
       message.JEWEL_TYPE,
+      message.JEWEL_CODE,
       message.IS_JEWEL_PICKED,
       message.MSG_TEXT,
       message.MEDIA_UPLOADED,
@@ -175,10 +176,10 @@ export async function insertIncomingMessage(
     `INSERT OR IGNORE INTO ChatMessage (
       IS_GROUP_MSG, MSG_TYPE, CREATED_DATE, CREATED_TIME, CHAT_ROOM_JID, CREATOR_JID,
       SENDER_NAME, SENDER_MSG_ID, IS_READ, TIME_READ, IS_DELIVERED, TIME_DELIVERED,
-      IS_SUBMITTED, TIME_CREATED, IS_ERROR, JEWEL_TYPE, IS_JEWEL_PICKED, MSG_TEXT,
+      IS_SUBMITTED, TIME_CREATED, IS_ERROR, JEWEL_TYPE, JEWEL_CODE, IS_JEWEL_PICKED, MSG_TEXT,
       MEDIA_UPLOADED, MEDIA_CLOUD, MEDIA_CLOUD_THUMBNAIL, SEQUENCE, IS_REPLY,
       REPLY_PARENT, IS_FORWARD, IS_STARRED
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
     [
       message.IS_GROUP_MSG,
       message.MSG_TYPE,
@@ -195,6 +196,7 @@ export async function insertIncomingMessage(
       message.TIME_CREATED,
       message.IS_ERROR,
       message.JEWEL_TYPE,
+      message.JEWEL_CODE,
       message.IS_JEWEL_PICKED,
       message.MSG_TEXT,
       message.MEDIA_UPLOADED,
@@ -239,6 +241,7 @@ export async function insertSystemMessage(params: {
     TIME_CREATED: params.createdTime,
     IS_ERROR: 0,
     JEWEL_TYPE: null,
+    JEWEL_CODE: null,
     IS_JEWEL_PICKED: 0,
     MSG_TEXT: params.text,
     MEDIA_UPLOADED: 0,

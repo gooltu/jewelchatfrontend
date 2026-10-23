@@ -66,6 +66,7 @@ import {
 import { replaceGroupMembers } from '../database/groupMemberRepository';
 import * as contactLookupApi from '../gameserver/contactLookupApi';
 import { enqueueOutgoingMessage, flushPendingMessages, setSubmittedListener } from './syncService';
+import { takeJewel, ensureJewelPoolReady } from './jewelPoolService';
 import * as timeSyncService from './timeSyncService';
 import { store } from '../store';
 import {
@@ -77,7 +78,7 @@ import {
 } from '../store/slices/chatSlice';
 import { jewelPicked } from '../store/slices/gameSlice';
 import { backfillMarkedComplete } from '../store/slices/rosterSlice';
-import { MSG_TYPE, randomJewelType, type ChatMessage } from '../types/chat';
+import { MSG_TYPE, type ChatMessage } from '../types/chat';
 import { MAX_JEWEL_CAPACITY, sumPickableJewels } from '../types/game';
 
 /**
@@ -550,6 +551,8 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
     await insertBareContactIfMissing(message.chatRoomJid);
   }
 
+  const jewel = isOwnSentMessage ? null : takeJewel();
+
   await insertIncomingMessage({
     IS_GROUP_MSG: message.isGroupMsg ? 1 : 0,
     MSG_TYPE: message.msgType,
@@ -565,7 +568,8 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
     TIME_DELIVERED: message.timestampMs,
     TIME_CREATED: message.timestampMs,
     IS_ERROR: 0,
-    JEWEL_TYPE: isOwnSentMessage ? null : randomJewelType(),
+    JEWEL_TYPE: jewel?.jeweltypeId ?? null,
+    JEWEL_CODE: jewel?.code ?? null,
     IS_JEWEL_PICKED: 0,
     MSG_TEXT: message.msgText,
     MEDIA_UPLOADED: 0,
@@ -646,6 +650,12 @@ const WELCOME_MESSAGES = [
  * upsertContact (UNIQUE JID) and insertIncomingMessage (INSERT OR IGNORE on
  * the same SENDER_MSG_IDs every call) make a repeat call from completeAuth a
  * safe no-op, so no separate "already seeded" guard is needed.
+ *
+ * Primes the jewel pool (awaited, unlike the normal reactive/fire-and-forget
+ * refill — see jewelPoolService.ensureJewelPoolReady) before seeding, so these
+ * messages carry real server-issued jewels on the very first run rather than
+ * racing a background fetch: the user's first look at the chat tab should
+ * already show jeweled welcome messages, not bare ones that gain jewels later.
  */
 export async function seedWelcomeContact(): Promise<void> {
   await upsertContact({
@@ -668,10 +678,15 @@ export async function seedWelcomeContact(): Promise<void> {
     IMAGE_PATH: null,
   });
 
+  // Awaited so the pool has real jewels to draw from before the loop below
+  // starts taking from it — see this function's doc comment.
+  await ensureJewelPoolReady();
+
   let lastCreatedTime = Date.now();
   for (let i = 0; i < WELCOME_MESSAGES.length; i += 1) {
     const createdTime = Date.now() + i;
     const text = WELCOME_MESSAGES[i] ?? '';
+    const jewel = takeJewel();
     // Sequential awaits (not Promise.all): insertIncomingMessage computes
     // SEQUENCE from MAX(SEQUENCE) per call, so this keeps the 5 seed
     // messages in ascending order.
@@ -690,7 +705,8 @@ export async function seedWelcomeContact(): Promise<void> {
       TIME_DELIVERED: createdTime,
       TIME_CREATED: createdTime,
       IS_ERROR: 0,
-      JEWEL_TYPE: 3,
+      JEWEL_TYPE: jewel?.jeweltypeId ?? null,
+      JEWEL_CODE: jewel?.code ?? null,
       IS_JEWEL_PICKED: 0,
       MSG_TEXT: text,
       MEDIA_UPLOADED: 0,
@@ -759,18 +775,18 @@ export async function markConversationRead(chatRoomJid: string): Promise<void> {
 
 /**
  * Picks a message's jewel: queues it in Redux's game.pickedJewels (flushed
- * later via authService.flushPickedJewels -> POST /bulkPickJewel) and
+ * later via authService.flushPickedJewels -> POST /bulkPickJewelVerified) and
  * persists IS_JEWEL_PICKED so it never resurfaces, even across reloads.
  * Re-checks the MAX_JEWEL_CAPACITY cap defensively — the UI (useCanPickJewel)
  * already gates the press, this is just a race-safety backstop.
  */
 export async function pickJewel(message: ChatMessage): Promise<void> {
-  if (!message.JEWEL_TYPE || !message.CHAT_ROOM_JID) return;
+  if (!message.JEWEL_TYPE || !message.JEWEL_CODE || !message.CHAT_ROOM_JID) return;
   const game = store.getState().game;
   const totalOwned = sumPickableJewels(game.jewels);
   if (totalOwned + (game.pickedJewels ?? []).length >= MAX_JEWEL_CAPACITY) return;
 
-  store.dispatch(jewelPicked({ type: message.JEWEL_TYPE }));
+  store.dispatch(jewelPicked({ type: message.JEWEL_TYPE, code: message.JEWEL_CODE }));
   await markJewelPicked(message._ID, true);
   notifyRoom(message.CHAT_ROOM_JID);
 }
@@ -803,6 +819,7 @@ export async function forwardMessage(message: ChatMessage, targetJids: string[])
       SENDER_NAME: null,
       TIME_CREATED: now,
       JEWEL_TYPE: null,
+      JEWEL_CODE: null,
       IS_JEWEL_PICKED: 0,
       MSG_TEXT: message.MSG_TEXT,
       MEDIA_UPLOADED: message.MEDIA_UPLOADED,
@@ -899,6 +916,7 @@ export async function sendTextMessage(params: SendTextMessageParams): Promise<Ch
     SENDER_NAME: params.senderName,
     TIME_CREATED: now,
     JEWEL_TYPE: null,
+    JEWEL_CODE: null,
     IS_JEWEL_PICKED: 0,
     MSG_TEXT: params.text,
     MEDIA_UPLOADED: 0,
@@ -965,6 +983,7 @@ async function sendMediaMessage(
     SENDER_NAME: params.senderName,
     TIME_CREATED: now,
     JEWEL_TYPE: null,
+    JEWEL_CODE: null,
     IS_JEWEL_PICKED: 0,
     MSG_TEXT: placeholderText,
     MEDIA_UPLOADED: 0,
@@ -1027,6 +1046,7 @@ async function sendPreparedMediaMessage(
     SENDER_NAME: params.senderName,
     TIME_CREATED: now,
     JEWEL_TYPE: null,
+    JEWEL_CODE: null,
     IS_JEWEL_PICKED: 0,
     MSG_TEXT: placeholderText,
     MEDIA_UPLOADED: 0,

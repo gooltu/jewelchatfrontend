@@ -715,7 +715,20 @@ function MessageBubbleRow({
             onAnimationEnd={() => setJewelVisible(false)}
           />
         ) : null}
-        <View style={{ alignSelf: direction === 'outgoing' ? 'flex-end' : 'flex-start' }}>
+        {/* `alignSelf: 'stretch'` (not flex-end/flex-start) — MessageBubble's
+            text-bubble width cap needs a definite width to flex-shrink
+            against, which it gets by stretching into its immediate parent.
+            A shrink-wrapped parent here would give it nothing to stretch
+            into, so the cap silently stops working. Alignment of this row's
+            own content (the "Forwarded" label) moves to `alignItems`
+            instead, which still works correctly against the stretched
+            width. */}
+        <View
+          style={{
+            alignSelf: 'stretch',
+            alignItems: direction === 'outgoing' ? 'flex-end' : 'flex-start',
+          }}
+        >
           {message.IS_FORWARD ? <Text style={styles.forwardedLabel}>Forwarded</Text> : null}
           <MessageBubble
             direction={direction}

@@ -6,9 +6,9 @@ interface BulkPickJewelResponse {
   message?: string;
 }
 
-/** Wraps POST /bulkPickJewel. Returns whether the sync succeeded. */
+/** Wraps POST /bulkPickJewelVerified. Returns whether the sync succeeded. */
 export async function bulkPickJewel(jewelarray: PickedJewel[]): Promise<boolean> {
-  const { data } = await gameserverClient.post<BulkPickJewelResponse>('/bulkPickJewel', {
+  const { data } = await gameserverClient.post<BulkPickJewelResponse>('/bulkPickJewelVerified', {
     jewelarray,
   });
   return !data.error;

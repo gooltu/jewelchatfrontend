@@ -53,10 +53,52 @@ export function setRefreshHandler(handler: (error: AxiosError) => Promise<unknow
   refreshAndRetry = handler;
 }
 
+/**
+ * These three endpoints are gated server-side behind Firebase App Check — see
+ * appCheckService.ts, which registers the token provider below once App Check is
+ * initialized at startup. No other endpoint gets the header.
+ */
+const APP_CHECK_PROTECTED_PATHS = new Set([
+  '/registerPhoneNumber',
+  '/verifyCode',
+  '/getAccessToken',
+]);
+
+/**
+ * Registered by appCheckService.ts once Firebase App Check is initialized — kept as
+ * a setter (like authTokenProvider above) so this module stays free of any import
+ * from appCheckService.ts. Best-effort: a null/failed token just means the header is
+ * omitted, letting the backend's own 403 (see AttestationError below) be the signal.
+ */
+let appCheckTokenProvider: (() => Promise<string | null>) | null = null;
+
+export function setAppCheckTokenProvider(provider: () => Promise<string | null>): void {
+  appCheckTokenProvider = provider;
+}
+
+/**
+ * Thrown in place of the raw AxiosError when one of APP_CHECK_PROTECTED_PATHS
+ * responds 403 — distinguishes "this device/app failed attestation" from a normal
+ * validation error (those endpoints return `{error: true, message}` with a 2xx
+ * status instead, see phoneAuthApi.ts) so callers can show attestation-specific UI.
+ */
+export class AttestationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AttestationError';
+  }
+}
+
 gameserverClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const token = await authTokenProvider?.();
   if (token) {
     config.headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (config.url && APP_CHECK_PROTECTED_PATHS.has(config.url)) {
+    const appCheckToken = await appCheckTokenProvider?.();
+    if (appCheckToken) {
+      config.headers.set('X-Firebase-AppCheck', appCheckToken);
+    }
   }
   if (__DEV__) {
     console.log(
@@ -70,6 +112,14 @@ gameserverClient.interceptors.request.use(async (config: InternalAxiosRequestCon
 gameserverClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
+    if (
+      error.response?.status === 403 &&
+      error.config?.url &&
+      APP_CHECK_PROTECTED_PATHS.has(error.config.url)
+    ) {
+      const data = error.response.data as { message?: string } | undefined;
+      return Promise.reject(new AttestationError(data?.message ?? 'App Check attestation failed'));
+    }
     if (error.response?.status === 401 && refreshAndRetry) {
       return refreshAndRetry(error);
     }

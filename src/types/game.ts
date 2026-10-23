@@ -114,9 +114,15 @@ export interface TaskElement {
   count: number;
 }
 
-/** One entry in game.pickedJewels — queued locally until POST /bulkPickJewel flushes it. */
+/**
+ * One entry in game.pickedJewels — queued locally until POST /bulkPickJewelVerified flushes
+ * it. `code` is the shared verification code from the /getJewels batch this jewel's
+ * jeweltype_id was drawn from (see ChatMessage.JEWEL_CODE) — the backend only credits
+ * a pick once it verifies `code` against that jewel.
+ */
 export interface PickedJewel {
   type: number;
+  code: string;
 }
 
 /** A user's total jewel count (sum of game.jewels + queued game.pickedJewels) may never reach this. */

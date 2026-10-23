@@ -42,8 +42,9 @@ import { RECEIPTS_NS, CHAT_MARKERS_NS, buildReceivedStanza } from './receiptStan
 import { parseAffiliationUsers } from './muclight';
 import { firstChildByTagName, firstChildByTagNameNs } from './xmlHelpers';
 import { resolveGroupMemberDisplayName } from '../services/identityService';
-import { MSG_TYPE, randomJewelType } from '../types/chat';
+import { MSG_TYPE } from '../types/chat';
 import type { ChatMessage } from '../types/chat';
+import { takeJewel } from '../services/jewelPoolService';
 
 /** XEP-0444 Message Reactions. */
 const REACTIONS_NS = 'urn:xmpp:reactions:0';
@@ -295,6 +296,7 @@ async function handleMessageStanza(
   }
 
   const now = Date.now();
+  const jewel = creatorJid === myJid ? null : takeJewel();
   await insertIncomingMessage({
     IS_GROUP_MSG: isGroupMsg ? 1 : 0,
     MSG_TYPE: msgType,
@@ -310,7 +312,8 @@ async function handleMessageStanza(
     TIME_DELIVERED: now,
     TIME_CREATED: now,
     IS_ERROR: 0,
-    JEWEL_TYPE: creatorJid === myJid ? null : randomJewelType(),
+    JEWEL_TYPE: jewel?.jeweltypeId ?? null,
+    JEWEL_CODE: jewel?.code ?? null,
     IS_JEWEL_PICKED: 0,
     MSG_TEXT: msgText,
     MEDIA_UPLOADED: 0,

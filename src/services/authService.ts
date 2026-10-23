@@ -278,7 +278,7 @@ export async function transferJewelsFromFactory(factoryId: number): Promise<bool
 }
 
 /**
- * Best-effort: flushes any queued game.pickedJewels to POST /bulkPickJewel.
+ * Best-effort: flushes any queued game.pickedJewels to POST /bulkPickJewelVerified.
  * No-ops if the queue is empty or not signed in, so every call site (leaving
  * ChatDetailScreen, backgrounding, foregrounding) can call this
  * unconditionally. On success, clears the queue and re-fetches game state so

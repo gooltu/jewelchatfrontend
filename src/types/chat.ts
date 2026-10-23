@@ -51,6 +51,8 @@ export interface ChatMessage {
   TIME_CREATED: number | null;
   IS_ERROR: number;
   JEWEL_TYPE: number | null;
+  /** Verification code from the /getJewels batch JEWEL_TYPE was drawn from — see jewelPoolService.ts and PickedJewel. */
+  JEWEL_CODE: string | null;
   IS_JEWEL_PICKED: number;
   MSG_TEXT: string | null;
   MEDIA_UPLOADED: number;
@@ -141,13 +143,3 @@ export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
  * or height (always null for this kind).
  */
 export const MSG_TYPE = { TEXT: 0, STICKER: 1, GIF: 2, SYSTEM: 3, IMAGE: 4, VIDEO: 5, VOICE: 6 } as const;
-
-/**
- * Chat-game jewel values a real incoming message (never our own) may be
- * assigned on arrival — see ChatMessage.JEWEL_TYPE in schema.ts.
- */
-export const JEWEL_TYPES = [3, 6, 9, 12, 15] as const;
-
-export function randomJewelType(): number {
-  return JEWEL_TYPES[Math.floor(Math.random() * JEWEL_TYPES.length)];
-}
