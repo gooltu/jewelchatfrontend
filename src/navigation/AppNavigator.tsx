@@ -17,6 +17,7 @@ import { GroupInfoScreen } from '@components/screens/chat/GroupInfoScreen';
 import { ProfileDetailScreen } from '@components/screens/chat/ProfileDetailScreen';
 import { TaskDetailScreen } from '@components/screens/game/TaskDetailScreen';
 import { FactoryScreen } from '@components/screens/game/FactoryScreen';
+import { GiftTaskDetailScreen } from '@components/screens/game/GiftTaskDetailScreen';
 import { ReferralsScreen } from '@components/screens/profile/ReferralsScreen';
 import { EditProfilePictureScreen } from '@components/screens/profile/EditProfilePictureScreen';
 import { MediaViewerScreen } from '@components/screens/chat/MediaViewerScreen';
@@ -48,6 +49,7 @@ function SignedInNavigator() {
       <RootStack.Screen name="GroupInfo" component={GroupInfoScreen} />
       <RootStack.Screen name="ProfileDetail" component={ProfileDetailScreen} />
       <RootStack.Screen name="TaskDetail" component={TaskDetailScreen} />
+      <RootStack.Screen name="GiftTaskDetail" component={GiftTaskDetailScreen} />
       <RootStack.Screen name="Factory" component={FactoryScreen} />
       <RootStack.Screen name="Referrals" component={ReferralsScreen} />
       <RootStack.Screen name="EditProfilePicture" component={EditProfilePictureScreen} />

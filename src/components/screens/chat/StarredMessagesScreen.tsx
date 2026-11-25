@@ -3,6 +3,7 @@ import { FlatList, Pressable, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStyles, type ThemeColors, spacing, typography, states, EmptyState } from '@components/design-system';
 import { useStarredMessages } from '@hooks/useStarredMessages';
+import { messageTestID } from '@components/shared/testIDs';
 import { useConversations } from '@hooks/useConversations';
 import type { RootScreenProps } from '@navigation/types';
 import type { ChatMessage } from '@app-types/chat';
@@ -35,7 +36,9 @@ export function StarredMessagesScreen({ navigation }: RootScreenProps<'StarredMe
   if (!loading && messages.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <EmptyState title="No starred messages" description="Star a message to find it here later." />
+        <EmptyState
+          testID="starred.empty"
+          title="No starred messages" description="Star a message to find it here later." />
       </SafeAreaView>
     );
   }
@@ -43,6 +46,7 @@ export function StarredMessagesScreen({ navigation }: RootScreenProps<'StarredMe
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <FlatList
+        testID="starred.list"
         data={messages}
         keyExtractor={(item) => String(item._ID)}
         contentContainerStyle={styles.listContent}
@@ -51,6 +55,7 @@ export function StarredMessagesScreen({ navigation }: RootScreenProps<'StarredMe
           const roomName = contact?.CONTACT_NAME ?? contact?.PHONEBOOK_CONTACT_NAME ?? 'Unknown User';
           return (
             <Pressable
+              testID={messageTestID(item, 'starred')}
               onPress={() => openConversation(item)}
               style={({ pressed }) => [styles.row, pressed && { opacity: states.pressedOpacity }]}
             >

@@ -1,0 +1,29 @@
+# Asserts the app is processing incoming stanzas, not just receiving them:
+# a bot message must be stored + rendered AND answered with <received/>.
+# Retries the send while the app is still reconnecting (a message sent before
+# the new session exists is only recoverable via MAM, which isn't under test).
+appId: net.jewelchat.app
+---
+- runFlow: dismiss-logbox.yaml
+- evalScript: ${output.probeN = (output.probeN || 0) + 1}
+- repeat:
+    while:
+      true: ${!output.probeOk}
+    times: 6
+    commands:
+      - runScript:
+          file: ../scripts/bot.js
+          env:
+            ACTION: send
+            BOT: alice
+            TEXT: "Probe ${output.probeN} ${output.runId}"
+      - evalScript: ${output.probeId = output.bot.id}
+      - runScript:
+          file: ../scripts/bot.js
+          env: { ACTION: probe-ack, BOT: alice, MSG_ID: "${output.probeId}", TIMEOUT_MS: "8000" }
+- assertTrue: ${output.probeOk}
+- evalScript: ${output.probeOk = false}
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.message.${output.probeId}.text"
+    timeout: 10000

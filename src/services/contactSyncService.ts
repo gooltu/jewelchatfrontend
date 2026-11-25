@@ -1,12 +1,15 @@
 // expo-contacts' top-level getContactsAsync/requestPermissionsAsync were
 // deprecated in SDK 57 in favor of a new class-based API; the legacy
 // sub-import keeps the same function-based surface we use here.
+import { Alert } from 'react-native';
 import * as Contacts from 'expo-contacts/legacy';
 import * as contactRepository from '@database/contactRepository';
 import * as contactLookupApi from '@gameserver/contactLookupApi';
 import * as chatService from './chatService';
 import { COUNTRY_CODE, getStoredDomain } from './authService';
 import type { Contact } from '@app-types/chat';
+import { store } from '@store/index';
+import { contactsDisclosureAccepted } from '@store/slices/consentSlice';
 
 /**
  * Orchestrates the device phonebook and the lazy JewelChat identity lookup —
@@ -28,8 +31,45 @@ function normalizePhoneNumber(raw: string): number | null {
  * resolveContactOnTap). Call this every time the Select Contact screen
  * mounts.
  */
+let disclosurePrompt: Promise<boolean> | null = null;
+
+/**
+ * Google Play prominent disclosure for contacts. It must appear in the app,
+ * before the OS permission prompt, say what is collected and why, and need an
+ * affirmative tap. Shown until accepted once (persisted in consentSlice).
+ * Single-flight, so screens that mount at the same time share one dialog.
+ */
+export function ensureContactsDisclosureAccepted(): Promise<boolean> {
+  if (store.getState().consent.contactsDisclosureAccepted) return Promise.resolve(true);
+  if (!disclosurePrompt) {
+    disclosurePrompt = new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Find friends on Jewel Chat',
+        'Jewel Chat reads the names and phone numbers in your contacts to show which of your contacts use ' +
+          'Jewel Chat. Your contact list stays on this device. When you tap a contact, that contact\'s phone ' +
+          'number is sent to Jewel Chat\'s server to check whether they have an account.',
+        [
+          { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+          {
+            text: 'Continue',
+            onPress: () => {
+              store.dispatch(contactsDisclosureAccepted());
+              resolve(true);
+            },
+          },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    }).finally(() => {
+      disclosurePrompt = null;
+    });
+  }
+  return disclosurePrompt;
+}
+
 export async function syncPhonebook(): Promise<void> {
   try {
+    if (!(await ensureContactsDisclosureAccepted())) return;
     const { status } = await Contacts.requestPermissionsAsync();
     if (status !== 'granted') return;
 

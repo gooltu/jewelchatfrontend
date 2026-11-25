@@ -11,8 +11,10 @@ import {
   IconButton,
   EmptyState,
   SkeletonRow,
+  subTestID,
 } from '@components/design-system';
 import { ContactAvatar } from '@components/shared/ContactAvatar';
+import { conversationRowTestID } from '@components/shared/testIDs';
 import { useConversations } from '@hooks/useConversations';
 import * as chatService from '@services/chatService';
 import type { RootScreenProps, AppStackOptions } from '@navigation/types';
@@ -73,9 +75,12 @@ export function ForwardMessageScreen({ navigation, route }: RootScreenProps<'For
           ))}
         </View>
       ) : conversations.length === 0 ? (
-        <EmptyState title="No conversations" description="Start a conversation first to forward to it." />
+        <EmptyState
+          testID="forward-message.empty"
+          title="No conversations" description="Start a conversation first to forward to it." />
       ) : (
         <FlatList
+          testID="forward-message.list"
           data={conversations}
           keyExtractor={(item) => String(item._ID)}
           contentContainerStyle={styles.listContent}
@@ -84,8 +89,10 @@ export function ForwardMessageScreen({ navigation, route }: RootScreenProps<'For
             const jid = item.JID;
             const isSelected = selected.has(jid);
             const name = item.CONTACT_NAME ?? item.PHONEBOOK_CONTACT_NAME ?? 'Unknown User';
+            const rowTestID = conversationRowTestID('forward-message', item);
             return (
               <Pressable
+                testID={rowTestID}
                 onPress={() => toggle(jid)}
                 style={({ pressed }) => [styles.row, pressed && { opacity: states.pressedOpacity }]}
               >
@@ -95,7 +102,12 @@ export function ForwardMessageScreen({ navigation, route }: RootScreenProps<'For
                     {name}
                   </Text>
                 </View>
-                <IconButton icon={Check} active={isSelected} onPress={() => toggle(jid)} />
+                <IconButton
+                  testID={subTestID(rowTestID, isSelected ? 'selected' : 'unselected')}
+                  icon={Check}
+                  active={isSelected}
+                  onPress={() => toggle(jid)}
+                />
               </Pressable>
             );
           }}

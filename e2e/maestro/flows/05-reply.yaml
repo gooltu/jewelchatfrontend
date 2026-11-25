@@ -1,0 +1,66 @@
+# Replies in both directions: the quote renders on the device, and the
+# device's reply stanza carries the bot message's wire id.
+appId: net.jewelchat.app
+name: 05-reply
+tags: [chat]
+---
+# Foreground without force-stopping: a killed app only catches up on
+# missed messages from its last *background* time (see e2e/README.md).
+- launchApp:
+    stopApp: false
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: alice }
+
+# Bot replies to a device message -> quote block visible.
+- runFlow:
+    file: ../subflows/send-from-device.yaml
+    env: { BOT: alice, TEXT: "Quote me ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env:
+      ACTION: send
+      BOT: alice
+      TEXT: "Replying ${output.runId}"
+      REPLY_TO_ID: "${output.bot.id}"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.message.${output.bot.id}.quote"
+    timeout: 15000
+
+# Device replies to the bot's message via the long-press menu.
+- evalScript: ${output.botMsgId = output.bot.id}
+# Retry until the menu opens: right after the bot's reply arrives the
+# inverted list is still settling its auto-scroll, and React Native gives
+# the first touch during a scroll to the ScrollView (to stop it), so the
+# bubble's Pressable never sees that long-press. Press the text, not the
+# bubble's center (on a reply bubble that's the quote block).
+- repeat:
+    while:
+      notVisible:
+        id: "message-actions.reply"
+    times: 3
+    commands:
+      - longPressOn:
+          id: "chat-detail.message.${output.botMsgId}.text"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- tapOn:
+    id: "message-actions.reply"
+- assertVisible:
+    id: "chat-detail.composer.reply"
+- tapOn:
+    id: "chat-detail.composer.input"
+- inputText: "Device reply ${output.runId}"
+- tapOn:
+    id: "chat-detail.composer.send"
+- runScript:
+    file: ../scripts/bot.js
+    env:
+      ACTION: wait-message
+      BOT: alice
+      CONTAINS: "Device reply ${output.runId}"
+      EXPECT_REPLY_TO: "${output.botMsgId}"

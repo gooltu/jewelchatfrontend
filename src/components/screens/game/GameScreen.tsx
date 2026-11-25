@@ -1,6 +1,17 @@
-import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 import { Clock, MoreVertical } from 'lucide-react-native';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useStyles,
@@ -17,6 +28,7 @@ import { TaskExplosionOverlay } from '@components/shared/TaskExplosionOverlay';
 import { useBombCountdown } from '@hooks/useBombCountdown';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { useGameTasks } from '@hooks/useGameTasks';
+import { useGiftTasks } from '@hooks/useGiftTasks';
 import { useWalletCounts } from '@hooks/useWalletCounts';
 import * as authService from '@services/authService';
 import * as gameService from '@services/gameService';
@@ -27,12 +39,14 @@ const crateIcon = require('../../../../assets/jewelbox.png');
 const gemIcon = require('../../../../assets/factory.png');
 const bombIcon = require('../../../../assets/Bomb.png');
 
+/** How close (px) to the bottom of the scroll content before the next gift-task page is requested. */
+const LOAD_MORE_THRESHOLD = 300;
+
 export function GameScreen({ navigation }: GameScreenProps) {
   const styles = useStyles(makeStyles);
-  const colors = useThemeColors();
   const wallet = useWalletCounts();
   const pointTasks = useGameTasks();
-  const giftTasks = useMemo(() => gameService.getGiftTasks(), []);
+  const { giftTasks, hasMore } = useGiftTasks();
   const gamebar = useGamebarStats();
   const [jewelStoreVisible, setJewelStoreVisible] = useState(false);
   const [explosionVisible, setExplosionVisible] = useState(false);
@@ -40,6 +54,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const handleExplosionDismiss = () => {
     setExplosionVisible(false);
     void authService.refreshAfterBombExplosion();
+  };
+
+  // Refetch page 0 on every focus, not just mount — remaining stock changes
+  // as gifts are redeemed (including by this user on GiftTaskDetail).
+  useFocusEffect(
+    useCallback(() => {
+      void gameService.refreshGiftTasks();
+    }, []),
+  );
+
+  const handleScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!hasMore) return;
+    const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - LOAD_MORE_THRESHOLD) {
+      void gameService.loadMoreGiftTasks();
+    }
   };
 
   useLayoutEffect(() => {
@@ -59,7 +89,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} onScroll={handleScroll} scrollEventThrottle={200}>
         <Text style={styles.sectionTitle}>Win game points and game coins</Text>
         <ScrollView
           horizontal
@@ -97,10 +127,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
           )}
         </ScrollView>
 
-        <Text style={[styles.sectionTitle, styles.giftSectionTitle]}>Win cash and gifts</Text>
-        <View style={styles.giftGrid}>
+        <Text style={[styles.sectionTitle, styles.giftSectionTitle]}>Win gifts</Text>
+        <View style={styles.giftList}>
           {giftTasks.map((task) => (
-            <GiftCard key={task.id} task={task} styles={styles} iconColor={colors.onSurfaceVariant} />
+            <GiftCard
+              key={task.id}
+              task={task}
+              onPress={() => navigation.navigate('GiftTaskDetail', { giftTaskId: String(task.id) })}
+              styles={styles}
+            />
           ))}
         </View>
       </ScrollView>
@@ -111,39 +146,30 @@ export function GameScreen({ navigation }: GameScreenProps) {
   );
 }
 
+/** One gift-task card: the product pic and name, both straight from /getGiftTasks. */
 function GiftCard({
   task,
+  onPress,
   styles,
-  iconColor,
 }: {
   task: GiftTask;
+  onPress: () => void;
   styles: ReturnType<typeof makeStyles>;
-  iconColor: string;
 }) {
-  if (task.kind === 'product') {
-    const Icon = task.icon;
-    return (
-      <View style={styles.giftCard}>
-        <View style={styles.giftImage}>
-          <Icon size={40} color={iconColor} strokeWidth={1.5} />
-        </View>
-        <Text style={styles.giftTitle} numberOfLines={2}>
-          {task.title}
-        </Text>
-        <Text style={styles.giftQty}>{`QTY: ${task.qtyWon}/${task.qtyTotal}`}</Text>
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.giftCard}>
-      <View style={[styles.giftImage, styles.cashImage]}>
-        <Text style={styles.cashSymbol}>{'₹'}</Text>
-        <Text style={styles.cashAmount}>{task.amountRupees}</Text>
+    <Pressable
+      style={({ pressed }) => [styles.giftCard, pressed && { opacity: states.pressedOpacity }]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Gift: ${task.productname}`}
+    >
+      <View style={styles.giftImage}>
+        <ExpoImage source={{ uri: task.product_pic }} style={styles.giftPic} contentFit="contain" />
       </View>
-      <Text style={styles.giftTitle}>{`${task.amountRupees} rupees`}</Text>
-      <Text style={styles.giftQty}>{`QTY: ${task.qtyWon}/${task.qtyTotal}`}</Text>
-    </View>
+      <Text style={styles.giftTitle} numberOfLines={2}>
+        {task.productname}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -229,15 +255,11 @@ const makeStyles = (colors: ThemeColors) =>
     bombImage: { width: 36, height: 36 },
     bombTickerRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     bombTickerText: { ...typography.labelLg, color: colors.error, fontWeight: '700' },
-    giftGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      paddingHorizontal: spacing.sm,
-      gap: spacing.sm,
+    giftList: {
+      paddingHorizontal: spacing.md,
+      gap: spacing.md,
     },
     giftCard: {
-      flexBasis: '47%',
-      flexGrow: 1,
       backgroundColor: colors.surfaceContainer,
       borderRadius: radius.md,
       overflow: 'hidden',
@@ -250,19 +272,11 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    cashImage: { flexDirection: 'row', gap: spacing.xs },
-    cashSymbol: { ...typography.headlineMd, color: colors.onSurface },
-    cashAmount: { ...typography.headlineMd, color: colors.onSurface },
+    giftPic: { width: '100%', height: '100%' },
     giftTitle: {
       ...typography.bodyMd,
       color: colors.onSurface,
       paddingHorizontal: spacing.sm,
       paddingTop: spacing.sm,
-    },
-    giftQty: {
-      ...typography.labelSm,
-      color: colors.onSurfaceVariant,
-      paddingHorizontal: spacing.sm,
-      paddingTop: 2,
     },
   });

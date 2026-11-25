@@ -1,0 +1,33 @@
+# Gets back to the Chats tab from wherever a previous flow left the app.
+appId: net.jewelchat.app
+---
+# Wait for a known screen first, and only navigate back while a root-stack
+# screen is positively showing — a blind Android `back` on the chat list exits
+# the app (and backgrounding currently breaks its XMPP handlers; README).
+- runFlow: dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "tabbar\\.tab\\.ChatsTab|chat-detail\\.composer\\.input|select-contact\\.list"
+    timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: "chat-detail.composer.input"
+    commands:
+      # The header's back button, not Android `back` (Maestro's hideKeyboard
+      # is a `back` too) — with no keyboard up, an extra back exits the app.
+      - tapOn:
+          id: "chat-detail.header.back"
+- runFlow:
+    when:
+      visible:
+        id: "select-contact.list"
+    commands:
+      - tapOn:
+          id: "select-contact.header.back"
+- extendedWaitUntil:
+    visible:
+      id: "tabbar.tab.ChatsTab"
+    timeout: 10000
+- tapOn:
+    id: "tabbar.tab.ChatsTab"

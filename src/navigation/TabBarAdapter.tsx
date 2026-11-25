@@ -21,6 +21,12 @@ const TABS: NavTabItem<TabKey>[] = [
 export function renderTabBar({ state, navigation }: BottomTabBarProps) {
   const active = state.routeNames[state.index] as TabKey;
   return (
-    <NavigationBar tabs={TABS} active={active} onChange={(tab) => navigation.navigate(tab)} />
+    <NavigationBar
+      tabs={TABS}
+      active={active}
+      onChange={(tab) => navigation.navigate(tab)}
+      // Tabs become `tabbar.tab.ChatsTab` / `.GameTab` / `.ProfileTab`.
+      testID="tabbar"
+    />
   );
 }

@@ -18,10 +18,12 @@ import chatReducer from './slices/chatSlice';
 import childrenReducer from './slices/childrenSlice';
 import factoryReducer from './slices/factorySlice';
 import gameReducer from './slices/gameSlice';
+import giftTasksReducer from './slices/giftTasksSlice';
 import inviteesReducer from './slices/inviteesSlice';
 import jewelPoolReducer from './slices/jewelPoolSlice';
 import loadingReducer from './slices/loadingSlice';
 import rosterReducer from './slices/rosterSlice';
+import consentReducer from './slices/consentSlice';
 import taskElementsReducer from './slices/taskElementsSlice';
 import tasksReducer from './slices/tasksSlice';
 import themeReducer from './slices/themeSlice';
@@ -35,10 +37,12 @@ const rootReducer = combineReducers({
   children: childrenReducer,
   factory: factoryReducer,
   game: gameReducer,
+  giftTasks: giftTasksReducer,
   invitees: inviteesReducer,
   jewelPool: jewelPoolReducer,
   loading: loadingReducer,
   roster: rosterReducer,
+  consent: consentReducer,
   taskElements: taskElementsReducer,
   tasks: tasksReducer,
   theme: themeReducer,
@@ -71,6 +75,10 @@ const persistConfig = {
   //    useTaskElements.ts) — "don't refetch on re-entering the same task"
   //    only needs to survive navigation within a session, which plain
   //    (non-persisted) Redux state already does.
+  //  - `giftTasks` (the paginated /getGiftTasks catalog + per-gift-task
+  //    jewel-requirement cache) is NOT persisted — remaining stock changes
+  //    with every redeem, so GameScreen refetches page 0 on every focus
+  //    anyway; same ephemeral treatment as `tasks`/`taskElements`.
   //  - `factory` (the /getFactories catalog: definitions + material costs)
   //    IS persisted, like `game` — it's static reference data, not per-user
   //    state, so authService.refreshFactories fetches it once ever (skipped
@@ -107,6 +115,9 @@ const persistConfig = {
   //    chatService.backfillRosterSubscriptions — must survive relaunch, or
   //    the one-time roster/presence-subscription backfill would re-run
   //    (harmlessly, but needlessly) on every cold launch forever.
+  //  - `consent` records accepted in-app disclosures (the contacts
+  //    prominent disclosure). It must survive relaunch so the user isn't
+  //    asked again on every contact-picker visit.
   whitelist: [
     'theme',
     'game',
@@ -116,6 +127,7 @@ const persistConfig = {
     'children',
     'roster',
     'jewelPool',
+    'consent',
   ],
 };
 

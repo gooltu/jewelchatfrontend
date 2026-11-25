@@ -1,12 +1,55 @@
-import type { LucideIcon } from 'lucide-react-native';
 import type { SVGIconName } from '@components/design-system';
 
-/** One "WIN CASH AND GIFTS" card on the Game tab — a product prize (no real
- * product photography yet, so a placeholder glyph stands in for the image)
- * or a cash prize (rupee amount instead). */
-export type GiftTask =
-  | { id: string; kind: 'product'; title: string; icon: LucideIcon; qtyWon: number; qtyTotal: number }
-  | { id: string; kind: 'cash'; amountRupees: number; qtyWon: number; qtyTotal: number };
+/**
+ * Real gameserver /getGiftTasks response row — one "WIN GIFTS" card on the
+ * Game tab. `current_qty` is the remaining stock (decremented server-side on
+ * every redeem). `cash`/`money` are carried through to match the wire shape
+ * but unused — this version of JewelChat has no cash gifts.
+ */
+export interface GiftTask {
+  id: number;
+  priority: number;
+  enabled: number;
+  cash: number;
+  productname: string;
+  productdetail: string;
+  product_pic: string;
+  money: string;
+  /** The product's cost when bought outright (GiftTaskDetailScreen's "Buy it now" panel). A decimal string or number, depending on the DB column type. */
+  product_value: string | number;
+  total_qty: number;
+  current_qty: number;
+  /** Added to the user's last-week level to get their target level for this gift (see GiftTaskUser.level). */
+  plus_level: number;
+  productlinks: string;
+  created_at: string;
+}
+
+/** Real gameserver /getGiftTasksElements response row — one jewel requirement for a gift task. */
+export interface GiftTaskElement {
+  id: number;
+  gifttask_id: number;
+  jeweltype_id: number;
+  count: number;
+}
+
+/**
+ * Real gameserver /getGiftTaskLevel (and /checkGiftTaskCompletion) row — the
+ * signed-in user's progress record for one gift task in the current weekly
+ * cycle, created server-side on first fetch. `level` is the level the user
+ * must reach to redeem.
+ */
+export interface GiftTaskUser {
+  id: number;
+  gifttask_id: number;
+  user_id: number;
+  cycle: number;
+  level: number;
+  done: number;
+  expiration_at: string;
+  giftwon_at: string | null;
+  status: string | null;
+}
 
 /** One row of the Profile tab's "WIN GAME DIAMONDS" checklist. `jewelIcon` is
  * omitted for the referral rows, which have no collectible-jewel art.

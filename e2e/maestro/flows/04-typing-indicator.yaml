@@ -1,0 +1,30 @@
+# Bot typing state drives the chat header subtitle.
+appId: net.jewelchat.app
+name: 04-typing-indicator
+tags: [chat]
+---
+# Foreground without force-stopping: a killed app only catches up on
+# missed messages from its last *background* time (see e2e/README.md).
+- launchApp:
+    stopApp: false
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: alice }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: typing, BOT: alice, STATE: composing }
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.header.subtitle"
+      text: "typing…"
+    timeout: 10000
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: typing, BOT: alice, STATE: paused }
+- extendedWaitUntil:
+    notVisible:
+      text: "typing…"
+    timeout: 10000

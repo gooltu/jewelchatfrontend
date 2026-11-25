@@ -5,6 +5,7 @@ import { useStyles, type ThemeColors, spacing, EmptyState, SkeletonRow } from '@
 import { useArchivedConversations } from '@hooks/useArchivedConversations';
 import * as chatService from '@services/chatService';
 import { ChatListRow } from './ChatListScreen';
+import { conversationRowTestID } from '@components/shared/testIDs';
 import type { RootScreenProps } from '@navigation/types';
 import type { Conversation } from '@app-types/chat';
 
@@ -46,7 +47,9 @@ export function ArchivedChatsScreen({ navigation }: RootScreenProps<'ArchivedCha
   if (conversations.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <EmptyState title="No archived chats" description="Archived conversations show up here." />
+        <EmptyState
+          testID="archived-chats.empty"
+          title="No archived chats" description="Archived conversations show up here." />
       </SafeAreaView>
     );
   }
@@ -54,11 +57,13 @@ export function ArchivedChatsScreen({ navigation }: RootScreenProps<'ArchivedCha
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <FlatList
+        testID="archived-chats.list"
         data={conversations}
         keyExtractor={(item) => String(item._ID)}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <ChatListRow
+            testID={conversationRowTestID('archived-chats', item)}
             conversation={item}
             onPress={() => openConversation(item)}
             onLongPress={() => item.JID && void chatService.setConversationArchived(item.JID, false)}

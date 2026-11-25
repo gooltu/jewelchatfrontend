@@ -50,6 +50,8 @@ export type RootStackParamList = {
   GroupInfo: { chatRoomJid: string; title: string };
   ProfileDetail: { chatRoomJid: string; title: string };
   TaskDetail: { taskId: string };
+  /** `giftTaskId` is the GiftTask's `id` — looked up in the already-fetched giftTasks list, like TaskDetail's taskId. */
+  GiftTaskDetail: { giftTaskId: string };
   Factory: undefined;
   Referrals: undefined;
   EditProfilePicture: undefined;

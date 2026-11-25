@@ -55,6 +55,7 @@
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
+    "@xmpp/client": "^0.13.6",
     "babel-preset-expo": "^57.0.9",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
@@ -67,12 +68,15 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
+    "build:android:release": "APP_ENV=production expo prebuild --clean -p android && cd android && ./gradlew bundleRelease",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
     "format": "prettier --write .",
     "test": "jest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "e2e/scripts/run-e2e.sh",
+    "e2e:bot": "node e2e/bot/server.mjs"
   },
   "private": true
 }

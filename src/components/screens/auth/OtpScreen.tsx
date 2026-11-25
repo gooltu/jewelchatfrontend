@@ -114,6 +114,7 @@ export function OtpScreen({ route, navigation }: AuthScreenProps<'Otp'>) {
             {digits.map((digit, index) => (
               <TextInput
                 key={index}
+                testID={`otp.digit.${index}`}
                 ref={(el) => {
                   inputRefs.current[index] = el;
                 }}
@@ -129,6 +130,7 @@ export function OtpScreen({ route, navigation }: AuthScreenProps<'Otp'>) {
           </View>
 
           <ButtonPrimary
+            testID="otp.verify"
             label={submitting ? 'Verifying…' : 'Verify'}
             onPress={handleVerify}
             disabled={code.length !== CODE_LENGTH || submitting}
@@ -136,6 +138,7 @@ export function OtpScreen({ route, navigation }: AuthScreenProps<'Otp'>) {
 
           {resendCount < MAX_RESENDS ? (
             <Pressable
+              testID="otp.resend"
               onPress={handleResend}
               disabled={resending || submitting}
               hitSlop={8}
@@ -153,7 +156,10 @@ export function OtpScreen({ route, navigation }: AuthScreenProps<'Otp'>) {
 
           {error ? (
             <View style={styles.toastWrap}>
-              <Toast variant="error" title="Verification failed" description={error} persist />
+              <Toast
+                testID="otp.error"
+                variant="error"
+                title="Verification failed" description={error} persist />
             </View>
           ) : null}
         </ScrollView>

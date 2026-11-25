@@ -2,7 +2,14 @@ import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Reply, Forward, Copy, Star, Trash2 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useStyles, type ThemeColors, radius, spacing, typography } from '@components/design-system';
+import {
+  useStyles,
+  subTestID,
+  type ThemeColors,
+  radius,
+  spacing,
+  typography,
+} from '@components/design-system';
 import * as chatService from '@services/chatService';
 import { MSG_TYPE, type ChatMessage } from '@app-types/chat';
 
@@ -12,6 +19,9 @@ interface MessageActionSheetProps {
   onClose: () => void;
   onReply: (message: ChatMessage) => void;
   onForward: (message: ChatMessage) => void;
+  /** Root id for the sheet; rows get `.reply`, `.forward`, `.copy`,
+   * `.star`/`.unstar`, `.delete`, and the backdrop `.backdrop`. */
+  testID?: string;
 }
 
 /**
@@ -20,7 +30,14 @@ interface MessageActionSheetProps {
  * render as a MessageBubble in the first place, so onLongPress can't fire on
  * one), so no guard is needed here beyond `message` being non-null.
  */
-export function MessageActionSheet({ visible, message, onClose, onReply, onForward }: MessageActionSheetProps) {
+export function MessageActionSheet({
+  visible,
+  message,
+  onClose,
+  onReply,
+  onForward,
+  testID,
+}: MessageActionSheetProps) {
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   if (!message) return null;
@@ -49,20 +66,25 @@ export function MessageActionSheet({ visible, message, onClose, onReply, onForwa
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      <Pressable testID={subTestID(testID, 'backdrop')} style={styles.backdrop} onPress={onClose} />
+      <View testID={testID} style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
-        <ActionRow icon={Reply} label="Reply" onPress={() => onReply(message)} />
-        <ActionRow icon={Forward} label="Forward" onPress={() => onForward(message)} />
+        <ActionRow testID={subTestID(testID, 'reply')} icon={Reply} label="Reply" onPress={() => onReply(message)} />
+        <ActionRow testID={subTestID(testID, 'forward')} icon={Forward} label="Forward" onPress={() => onForward(message)} />
         {message.MSG_TYPE === MSG_TYPE.TEXT ? (
-          <ActionRow icon={Copy} label="Copy" onPress={() => void handleCopy()} />
+          <ActionRow testID={subTestID(testID, 'copy')} icon={Copy} label="Copy" onPress={() => void handleCopy()} />
         ) : null}
         <ActionRow
+          testID={subTestID(testID, message.IS_STARRED ? 'unstar' : 'star')}
           icon={Star}
           label={message.IS_STARRED ? 'Unstar' : 'Star'}
           onPress={() => void handleToggleStar()}
         />
-        <ActionRow icon={Trash2} label="Delete" destructive onPress={handleDelete} />
+        <ActionRow
+          testID={subTestID(testID, 'delete')}
+          icon={Trash2}
+          label="Delete"
+          destructive onPress={handleDelete} />
       </View>
     </Modal>
   );
@@ -73,15 +95,17 @@ function ActionRow({
   label,
   destructive,
   onPress,
+  testID,
 }: {
   icon: typeof Reply;
   label: string;
   destructive?: boolean;
   onPress: () => void;
+  testID?: string;
 }) {
   const styles = useStyles(makeStyles);
   return (
-    <Pressable style={styles.row} onPress={onPress}>
+    <Pressable testID={testID} style={styles.row} onPress={onPress}>
       <Icon size={20} color={destructive ? styles.destructiveColor.color : styles.rowIcon.color} />
       <Text style={[typography.bodyMd, styles.rowLabel, destructive && styles.destructiveColor]}>
         {label}

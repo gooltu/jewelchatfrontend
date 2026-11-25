@@ -1,12 +1,11 @@
 import { useCallback, useLayoutEffect, useState } from 'react';
-import { Check, Clock, Info, X } from 'lucide-react-native';
+import { Clock } from 'lucide-react-native';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useStyles,
   useThemeColors,
   type ThemeColors,
-  type SVGIconName,
   ButtonGhost,
   ButtonPrimary,
   spacing,
@@ -14,6 +13,7 @@ import {
   typography,
   SVGImageIcon,
 } from '@components/design-system';
+import { JewelRequirementRow } from '@components/shared/JewelRequirementRow';
 import { JewelStoreSheet } from '@components/shared/JewelStoreSheet';
 import { TaskCelebrationOverlay } from '@components/shared/TaskCelebrationOverlay';
 import { TaskExplosionOverlay } from '@components/shared/TaskExplosionOverlay';
@@ -34,7 +34,7 @@ const bombIcon = require('../../../../assets/Bomb.png');
 
 interface JewelRow {
   id: number;
-  jewelIcon: SVGIconName;
+  jeweltypeId: number;
   required: number;
   owned: number;
 }
@@ -96,7 +96,7 @@ export function TaskDetailScreen({ route, navigation }: RootScreenProps<'TaskDet
 
   const jewelRows: JewelRow[] = elements.map((element) => ({
     id: element.id,
-    jewelIcon: `j${element.jeweltype_id}` as SVGIconName,
+    jeweltypeId: element.jeweltype_id,
     required: element.count,
     owned: jewels?.find((j) => j.jeweltype_id === element.jeweltype_id)?.count ?? 0,
   }));
@@ -165,7 +165,12 @@ export function TaskDetailScreen({ route, navigation }: RootScreenProps<'TaskDet
 
         <Text style={styles.sectionTitle}>Collect jewels</Text>
         {jewelRows.map((requirement) => (
-          <JewelRowItem key={requirement.id} requirement={requirement} styles={styles} colors={colors} />
+          <JewelRequirementRow
+            key={requirement.id}
+            jeweltypeId={requirement.jeweltypeId}
+            required={requirement.required}
+            owned={requirement.owned}
+          />
         ))}
 
         <View style={styles.ctaWrap}>
@@ -225,40 +230,6 @@ function BombDetailCard({
   );
 }
 
-function JewelRowItem({
-  requirement,
-  styles,
-  colors,
-}: {
-  requirement: JewelRow;
-  styles: ReturnType<typeof makeStyles>;
-  colors: ThemeColors;
-}) {
-  const available = requirement.owned >= requirement.required;
-  const shown = Math.min(requirement.required, 3);
-
-  return (
-    <View style={styles.jewelRow}>
-      <View style={styles.jewelIcons}>
-        {Array.from({ length: shown }).map((_, index) => (
-          <SVGImageIcon key={index} icon={requirement.jewelIcon} size={28} />
-        ))}
-        {requirement.required > 5 && (
-          <Text style={styles.jewelCount}>{`...(${requirement.required})`}</Text>
-        )}
-      </View>
-      {available ? (
-        <Check size={20} color={colors.success} />
-      ) : (
-        <View style={styles.jewelStatus}>
-          <X size={20} color={colors.error} />
-          <Info size={20} color={colors.onSurfaceVariant} />
-        </View>
-      )}
-    </View>
-  );
-}
-
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.surface },
@@ -303,16 +274,5 @@ const makeStyles = (colors: ThemeColors) =>
       borderTopColor: colors.outlineVariant,
       paddingTop: spacing.md,
     },
-    jewelRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.md,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-    },
-    jewelIcons: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },
-    jewelCount: { ...typography.bodyLg, color: colors.primary },
-    jewelStatus: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     ctaWrap: { alignItems: 'center', paddingTop: spacing.xl },
   });

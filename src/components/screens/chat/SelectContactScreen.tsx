@@ -14,6 +14,7 @@ import {
   InputField,
 } from '@components/design-system';
 import { ContactAvatar } from '@components/shared/ContactAvatar';
+import { contactRowTestID } from '@components/shared/testIDs';
 import { useSelectableContacts } from '@hooks/useSelectableContacts';
 import { useGamebarStats } from '@hooks/useGamebarStats';
 import { resolveContactOnTap } from '@services/contactSyncService';
@@ -83,6 +84,7 @@ export function SelectContactScreen({ navigation }: RootScreenProps<'SelectConta
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.createGroupWrap}>
         <ButtonPrimary
+          testID="select-contact.create-group"
           label="Create group"
           onPress={() => navigation.navigate('SelectGroupMembers', {})}
         />
@@ -91,6 +93,7 @@ export function SelectContactScreen({ navigation }: RootScreenProps<'SelectConta
       {searchVisible && (
         <View style={styles.searchWrap}>
           <InputField
+            testID="select-contact.search"
             icon={Search}
             placeholder="Search by name or phone"
             value={query}
@@ -108,6 +111,7 @@ export function SelectContactScreen({ navigation }: RootScreenProps<'SelectConta
         </View>
       ) : filtered.length === 0 ? (
         <EmptyState
+          testID="select-contact.empty"
           title={query.trim() ? 'No matches' : 'No contacts found'}
           description={
             query.trim()
@@ -117,11 +121,13 @@ export function SelectContactScreen({ navigation }: RootScreenProps<'SelectConta
         />
       ) : (
         <FlatList
+          testID="select-contact.list"
           data={filtered}
           keyExtractor={(item) => String(item._ID)}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
             <Pressable
+              testID={contactRowTestID('select-contact', item)}
               onPress={() => handlePress(item)}
               disabled={resolvingId !== null}
               style={({ pressed }) => [styles.row, pressed && { opacity: states.pressedOpacity }]}

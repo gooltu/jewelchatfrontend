@@ -8,6 +8,9 @@ interface AppExtra {
   chatserverUrl: string;
   chatserverDomain: string;
   klipyApiKey: string;
+  privacyPolicyUrl: string;
+  termsUrl: string;
+  accountDeletionUrl: string;
 }
 
 /**
@@ -31,6 +34,9 @@ export const env = {
   chatserverUrl: extra.chatserverUrl,
   chatserverDomain: extra.chatserverDomain,
   klipyApiKey: extra.klipyApiKey,
+  privacyPolicyUrl: extra.privacyPolicyUrl,
+  termsUrl: extra.termsUrl,
+  accountDeletionUrl: extra.accountDeletionUrl,
   isDevelopment: extra.appEnv === 'development',
   isProduction: extra.appEnv === 'production',
 };

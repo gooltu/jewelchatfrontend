@@ -1,0 +1,40 @@
+# Bot online/offline shows in the 1:1 header. Needs the bot's number in the
+# device's phonebook (e2e/scripts/seed-contacts.sh) AND imported into the app
+# (import-phonebook.yaml) — otherwise the app rejects the bot's presence
+# subscription with `unsubscribed` and the header never changes.
+appId: net.jewelchat.app
+name: 08-presence
+tags: [chat, needs-contacts]
+---
+# Foreground without force-stopping: a killed app only catches up on
+# missed messages from its last *background* time (see e2e/README.md).
+- launchApp:
+    stopApp: false
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/import-phonebook.yaml
+    env: { BOT: alice }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: subscribe, BOT: alice }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: alice }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: presence, BOT: alice, AVAILABLE: "false" }
+- extendedWaitUntil:
+    notVisible:
+      id: "chat-detail.header.subtitle"
+      text: "Online"
+    timeout: 15000
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: presence, BOT: alice, AVAILABLE: "true" }
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.header.subtitle"
+      text: "Online"
+    timeout: 15000

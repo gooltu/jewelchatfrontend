@@ -4,6 +4,7 @@ import { persistor, store } from '@store/index';
 import { chatSessionReset } from '@store/slices/chatSlice';
 import * as timeSyncService from '@services/timeSyncService';
 import * as authService from '@services/authService';
+import * as chatService from '@services/chatService';
 
 /**
  * Set around any call that launches a separate native Activity/view we
@@ -23,7 +24,8 @@ export function setTransientBackgroundExpected(expected: boolean): void {
 
 /**
  * Flushes redux-persist to AsyncStorage on backgrounding (the OS can
- * suspend/kill the process without warning) and fires onForeground when
+ * suspend/kill the process without warning), disconnects XMPP so the server
+ * starts pushing (see below), and fires onForeground when
  * the app returns — e.g. to nudge chatService's XMPP connection. Also
  * resets chatSlice's connection/typing/active-conversation state on
  * backgrounding (see chatSessionReset's doc comment) so a stale cached
@@ -83,6 +85,14 @@ export function useAppState(options: { onForeground?: () => void; onBackground?:
         void timeSyncService.recordBackgroundChatTime();
         void authService.flushPickedJewels();
         store.dispatch(chatSessionReset());
+        // End the XMPP session cleanly (</stream>) instead of leaving the
+        // socket for the OS to kill eventually. While a session (or a
+        // stream-management resumable one) is alive, MongooseIM keeps routing
+        // messages to it, so the user never looks offline and no push
+        // (XEP-0357, see pushService.ts) is sent. Foreground reconnects and
+        // backfills anything missed via MAM (authService.reconnectChat →
+        // chatService.resyncAfterForeground).
+        chatService.disconnect();
         onBackground?.();
       }
 

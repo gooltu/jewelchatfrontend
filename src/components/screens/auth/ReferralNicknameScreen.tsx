@@ -65,6 +65,7 @@ export function ReferralNicknameScreen({ route }: AuthScreenProps<'ReferralNickn
             </View>
             <View style={styles.inputWrap}>
               <InputField
+                testID="referral.referrer-phone"
                 placeholder="Referrer's phone number"
                 keyboardType="number-pad"
                 maxLength={10}
@@ -75,6 +76,7 @@ export function ReferralNicknameScreen({ route }: AuthScreenProps<'ReferralNickn
           </View>
           <View style={styles.field}>
             <InputField
+              testID="referral.nickname"
               placeholder="Your nickname"
               autoCapitalize="words"
               value={nickname}
@@ -82,15 +84,18 @@ export function ReferralNicknameScreen({ route }: AuthScreenProps<'ReferralNickn
             />
           </View>
 
-          <ButtonPrimary label="Continue" onPress={handleSubmit} disabled={submitting} />
+          <ButtonPrimary testID="referral.continue" label="Continue" onPress={handleSubmit} disabled={submitting} />
 
           <View style={styles.skip}>
-            <ButtonGhost label="Skip" onPress={handleSkip} disabled={submitting} />
+            <ButtonGhost testID="referral.skip" label="Skip" onPress={handleSkip} disabled={submitting} />
           </View>
 
           {error ? (
             <View style={styles.toastWrap}>
-              <Toast variant="error" title="Could not continue" description={error} persist />
+              <Toast
+                testID="referral.error"
+                variant="error"
+                title="Could not continue" description={error} persist />
             </View>
           ) : null}
         </ScrollView>

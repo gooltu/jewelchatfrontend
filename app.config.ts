@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import type { ExpoConfig, ConfigContext } from 'expo/config';
 
 type AppEnv = 'development' | 'staging' | 'production';
@@ -22,9 +23,33 @@ const CHATSERVER_DOMAINS: Record<AppEnv, string> = {
   production: 'chat.jewelchat.net',
 };
 
+// Public legal pages served by ServerProjextX (public/*.html, controllers/legal.js).
+// Linked from Settings + onboarding, and from the Play Console listing.
+const LEGAL_BASE_URL = 'https://game.jewelchat.net';
+
+// Firebase native config files (both gitignored; download from the Firebase
+// console, project jewel-chat-1984). Referenced only if present, so a fresh
+// checkout without them still prebuilds — App Check / FCM just won't work.
+const ANDROID_GOOGLE_SERVICES = './google-services.json';
+const IOS_GOOGLE_SERVICES = './GoogleService-Info.plist';
+const hasAndroidGoogleServices = existsSync(ANDROID_GOOGLE_SERVICES);
+const hasIosGoogleServices = existsSync(IOS_GOOGLE_SERVICES);
+
+// Bump for every Play upload (Play rejects a reused versionCode).
+const ANDROID_VERSION_CODE = 1;
+
+// Point a development build at a local stack (ServerProjextX + ChatServerConf
+// docker), e.g. for push testing. From an Android emulator the host is
+// 10.0.2.2:
+//   JC_GAMESERVER_URL=http://10.0.2.2:3000 JC_CHATSERVER_URL=ws://10.0.2.2:5280/ws-xmpp npx expo start
+// Ignored outside APP_ENV=development.
+const LOCAL_OVERRIDES = APP_ENV === 'development';
+const gameserverUrl = (LOCAL_OVERRIDES && process.env.JC_GAMESERVER_URL) || GAMESERVER_URLS[APP_ENV];
+const chatserverUrl = (LOCAL_OVERRIDES && process.env.JC_CHATSERVER_URL) || CHATSERVER_URLS[APP_ENV];
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'jewelchatfrontend',
+  name: 'Jewel Chat',
   slug: 'jewelchatfrontend',
   version: '1.0.0',
   orientation: 'portrait',
@@ -36,19 +61,28 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // (iOS builds/EAS/Firebase app registration all require one). Change this
     // if you've already reserved a different bundle id in App Store Connect.
     bundleIdentifier: 'net.jewelchat.app',
-    // Firebase App Check disabled for now (see the plugins array below) — no
-    // Firebase project registered yet. These two re-enable alongside it:
-    // googleServicesFile: './GoogleService-Info.plist', // from Firebase console > your iOS app
-    // entitlements: {
-    //   'com.apple.developer.devicecheck.appattest-environment':
-    //     APP_ENV === 'production' ? 'production' : 'development',
-    // },
+    // No GoogleService-Info.plist yet (iOS app not registered in Firebase).
+    // iOS prebuild needs it once the Firebase plugins below are active.
+    // The App Attest entitlement goes with it, since it needs the App Attest
+    // capability on the Apple developer account.
+    ...(hasIosGoogleServices
+      ? {
+          googleServicesFile: IOS_GOOGLE_SERVICES,
+          entitlements: {
+            'com.apple.developer.devicecheck.appattest-environment':
+              APP_ENV === 'production' ? 'production' : 'development',
+          },
+        }
+      : {}),
   },
   android: {
     package: 'net.jewelchat.app',
-    // Firebase App Check disabled for now (see the plugins array below) — no
-    // Firebase project registered yet. Re-enable alongside it:
-    // googleServicesFile: './google-services.json', // from Firebase console > your Android app
+    versionCode: ANDROID_VERSION_CODE,
+    // Firebase project jewel-chat-1984: App Check (Play Integrity) and FCM push.
+    ...(hasAndroidGoogleServices ? { googleServicesFile: ANDROID_GOOGLE_SERVICES } : {}),
+    // expo-contacts adds WRITE_CONTACTS, but the app only ever reads contacts.
+    // Play reviews every declared sensitive permission, so drop the unused one.
+    blockedPermissions: ['android.permission.WRITE_CONTACTS'],
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/android-icon-foreground.png',
@@ -62,12 +96,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     // Firebase App Check (gates /registerPhoneNumber, /verifyCode, /getAccessToken
-    // — see appCheckService.ts / gameserver/client.ts) disabled for now: no
-    // Firebase project registered yet, and testing shouldn't depend on it.
-    // Re-enable once google-services.json/GoogleService-Info.plist are in place
-    // (see the ios/android blocks above), then run `expo prebuild --clean`.
-    // '@react-native-firebase/app',
-    // '@react-native-firebase/app-check',
+    // once the server sets APP_CHECK_ENABLED, see appCheckService.ts and
+    // gameserver/client.ts). After changing anything here, run
+    // `expo prebuild --clean`.
+    '@react-native-firebase/app',
+    '@react-native-firebase/app-check',
     'expo-font',
     'expo-asset',
     'expo-sqlite',
@@ -100,21 +133,29 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         microphonePermission: 'Allow $(PRODUCT_NAME) to access your microphone to send voice messages.',
       },
     ],
-    // expo-notifications disabled for early development: remote push isn't
-    // testable in Expo Go (SDK 53+ removed it) and a dev client isn't set
-    // up yet. Re-enable when that's in place.
-    // [
-    //   'expo-notifications',
-    //   {
-    //     icon: './assets/icon.png',
-    //   },
-    // ],
+    // Remote push (FCM via MongooseIM XEP-0357, see services/pushService.ts).
+    // Not available in Expo Go: needs a dev or release build. The icon must be
+    // a white-on-transparent silhouette (Android tints it).
+    [
+      'expo-notifications',
+      {
+        icon: './assets/android-icon-monochrome.png',
+        color: '#6D28D9',
+        defaultChannel: 'messages',
+      },
+    ],
+    // Real release signing config for local `./gradlew bundleRelease`. See
+    // the plugin's header comment and docs/play-store-release.md.
+    './plugins/withReleaseSigning',
   ],
   extra: {
     appEnv: APP_ENV,
-    gameserverUrl: GAMESERVER_URLS[APP_ENV],
-    chatserverUrl: CHATSERVER_URLS[APP_ENV],
+    gameserverUrl,
+    chatserverUrl,
     chatserverDomain: CHATSERVER_DOMAINS[APP_ENV],
     klipyApiKey: process.env.EXPO_PUBLIC_KLIPY_API_KEY ?? '',
+    privacyPolicyUrl: `${LEGAL_BASE_URL}/privacy`,
+    termsUrl: `${LEGAL_BASE_URL}/terms`,
+    accountDeletionUrl: `${LEGAL_BASE_URL}/account/delete`,
   },
 });

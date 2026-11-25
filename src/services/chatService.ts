@@ -1,5 +1,4 @@
 import { $msg, $pres, Strophe } from 'react-native-strophe';
-import type { StropheConnection } from 'react-native-strophe';
 import {
   connect as stropheConnect,
   disconnect as stropheDisconnect,
@@ -68,6 +67,7 @@ import * as contactLookupApi from '../gameserver/contactLookupApi';
 import { enqueueOutgoingMessage, flushPendingMessages, setSubmittedListener } from './syncService';
 import { takeJewel, ensureJewelPoolReady } from './jewelPoolService';
 import * as timeSyncService from './timeSyncService';
+import * as pushService from './pushService';
 import { store } from '../store';
 import {
   activeConversationSet,
@@ -140,14 +140,30 @@ const STATUS_MAP: Record<ConnectionStatus, XmppConnectionStatus> = {
   redirect: 'connecting',
 };
 
-let handlersRegisteredFor: StropheConnection | null = null;
+/** `addHandler` refs from the most recent registerStanzaHandlersForSession call. */
+let stanzaHandlerRefs: unknown[] = [];
 let statusUnsubscribe: (() => void) | null = null;
 
-function ensureStanzaHandlersRegistered(myJid: string): void {
+/**
+ * Runs on EVERY transition to 'connected', not once per Connection object.
+ * Strophe's `_doDisconnect` empties `connection.handlers` on every disconnect
+ * (backgrounding, network drop, airplane mode), and stropheClient.connect()
+ * reuses the same Connection across reconnects — so a once-per-object guard
+ * left a reconnected session with no handlers at all: every incoming message,
+ * receipt, chat-state and presence was received and silently dropped until
+ * the process restarted. Found by the E2E suite (e2e/README.md).
+ *
+ * The previous refs are deleted first, so a 'connected' that arrives without
+ * an intervening disconnect can't double-register (deleteHandler on a ref
+ * Strophe already wiped is a no-op).
+ */
+function registerStanzaHandlersForSession(myJid: string): void {
   const connection = getConnection();
-  if (!connection || connection === handlersRegisteredFor) return;
+  if (!connection) return;
 
-  registerStanzaHandlers(connection, myJid, {
+  for (const ref of stanzaHandlerRefs) connection.deleteHandler(ref);
+
+  stanzaHandlerRefs = registerStanzaHandlers(connection, myJid, {
     onMessageStored: (message) => handleIncomingMessageStored(message),
     onReactionsChanged: (chatRoomJid) => notifyRoom(chatRoomJid),
     onTypingChanged: (chatRoomJid, isTyping) => {
@@ -164,7 +180,6 @@ function ensureStanzaHandlersRegistered(myJid: string): void {
       void handleIncomingSubscriptionRequest(fromJid);
     },
   });
-  handlersRegisteredFor = connection;
 }
 
 /**
@@ -359,8 +374,11 @@ export function connect(jid: string, password: string): void {
     statusUnsubscribe = onConnectionStatusChange((status) => {
       store.dispatch(connectionStatusChanged(STATUS_MAP[status]));
       if (status === 'connected') {
-        ensureStanzaHandlersRegistered(jid);
+        registerStanzaHandlersForSession(jid);
         broadcastPresence();
+        // XEP-0357 enable on every (re)connect. Idempotent (same per-install
+        // node id), and it picks up a rotated FCM token. See pushService.ts.
+        void pushService.ensurePushRegistered(jid);
         void timeSyncService.syncServerTimeDelta();
         void syncGroupRooms();
         void backfillRosterSubscriptions();
@@ -389,6 +407,9 @@ function broadcastPresence(): void {
  * blocks the UI.
  */
 export async function resyncAfterForeground(jid: string, password: string): Promise<void> {
+  // Taken before reconnecting, so the re-check window always covers the
+  // reconnect gap even if the steps below (first catch-up included) are slow.
+  const resyncStartedAtMs = Date.now();
   try {
     if (store.getState().chat.connectionStatus !== 'connected') {
       await connectAndWait(jid, password);
@@ -403,7 +424,8 @@ export async function resyncAfterForeground(jid: string, password: string): Prom
     // since that only fires on an actual status transition to 'connected'.
     await flushPendingMessages();
     void resumePendingMediaUploads();
-    await downloadHistorySinceBackground();
+    const historyStartMs = await downloadHistorySinceBackground();
+    void scheduleSettledHistoryRecheck(historyStartMs, resyncStartedAtMs);
     await syncGroupRooms();
   } catch (error) {
     if (__DEV__) {
@@ -470,6 +492,55 @@ async function syncGroupRooms(): Promise<void> {
 }
 
 /**
+ * The catch-up starts this long before the recorded background time. A
+ * message the server delivered to the old session in its last moments (just
+ * before the app recorded that time and the socket closed) is never
+ * processed live, and its archive timestamp is slightly *earlier* than the
+ * recorded time, so a catch-up starting exactly there skips it. Found by e2e
+ * flow 09-reconnect. The overlap is cheap: persistArchivedMessage dedups by
+ * SENDER_MSG_ID.
+ */
+const HISTORY_START_OVERLAP_MS = 5_000;
+/** The second catch-up only covers this much time before the reconnect. */
+const HISTORY_RECHECK_WINDOW_MS = 10_000;
+/** How long to wait before re-checking, so the server's archive has settled. */
+const HISTORY_RECHECK_DELAY_MS = 3_000;
+
+/**
+ * Runs a small second MAM catch-up a few seconds after a reconnect, covering
+ * only HISTORY_RECHECK_WINDOW_MS before the resync started (never earlier
+ * than the first catch-up's own start) up to now.
+ *
+ * Why: the server has no offline queue (`mod_offline_stub`, see
+ * ChatServerConf/CLAUDE.md), so a message that arrives in the ~100 ms
+ * between the old session closing and the new one sending its initial
+ * presence is never delivered live; it only exists in the MAM archive. The
+ * first catch-up runs right after login and can query before the server has
+ * written that message to the archive, so it finds nothing. Re-querying
+ * once the archive has settled picks it up. The window is deliberately
+ * short: that race only happens around the reconnect itself, and re-fetching
+ * the whole time spent in the background could mean hundreds of messages.
+ * Repeats are harmless: persistArchivedMessage dedups by SENDER_MSG_ID.
+ * Found by e2e flow 02-receive-message once PLAIN login made reconnects fast.
+ */
+async function scheduleSettledHistoryRecheck(
+  startMs: number | null,
+  resyncStartedAtMs: number,
+): Promise<void> {
+  if (startMs === null) return;
+  const deltaChat = await timeSyncService.getChatServerTimeDelta();
+  if (deltaChat === null) return;
+  const reconnectedAtMs = resyncStartedAtMs + deltaChat;
+  const windowStartMs = Math.max(startMs, reconnectedAtMs - HISTORY_RECHECK_WINDOW_MS);
+
+  setTimeout(() => {
+    downloadHistorySinceBackground(windowStartMs).catch((error) => {
+      if (__DEV__) console.log('[history] settled re-check failed:', error);
+    });
+  }, HISTORY_RECHECK_DELAY_MS);
+}
+
+/**
  * Downloads whatever arrived in the account's MAM archive since the last
  * backgrounding (timeSyncService.recordBackgroundChatTime's whole reason for
  * existing) and merges it into local SQLite. No-op if the app has never
@@ -479,11 +550,17 @@ async function syncGroupRooms(): Promise<void> {
  * local group Contact gets its own `to`-addressed request. One room's query
  * failing (e.g. it was destroyed, or the server rejects a non-occupant) is
  * best-effort and must not block backfill for every other conversation.
+ * `fromMs` overrides the start (used by scheduleSettledHistoryRecheck);
+ * returns the start actually used, or null if nothing was queried.
  */
-async function downloadHistorySinceBackground(): Promise<void> {
-  const startMs = await timeSyncService.getBackgroundChatTime();
+async function downloadHistorySinceBackground(fromMs?: number): Promise<number | null> {
+  let startMs = fromMs ?? null;
+  if (startMs === null) {
+    const backgroundAtMs = await timeSyncService.getBackgroundChatTime();
+    startMs = backgroundAtMs === null ? null : backgroundAtMs - HISTORY_START_OVERLAP_MS;
+  }
   const myJid = store.getState().auth.jid;
-  if (startMs === null || !myJid) return;
+  if (startMs === null || !myJid) return null;
 
   const archived: ArchivedMessage[] = [];
   await fetchArchivedMessages(startMs, myJid, (message) => archived.push(message));
@@ -507,6 +584,7 @@ async function downloadHistorySinceBackground(): Promise<void> {
   if (__DEV__) {
     console.log(`[history] since ${startMs}: ${archived.length} archived message(s) found`);
   }
+  return startMs;
 }
 
 /**
@@ -737,7 +815,28 @@ export function setActiveConversation(jid: string | null): void {
   store.dispatch(activeConversationSet(jid));
   if (jid) {
     void markConversationRead(jid);
+    void pushService.dismissNotificationsForConversation(jid);
   }
+}
+
+/**
+ * Display name for a conversation, from the local Contact row. Used by a
+ * notification tap, since the FCM payload can't always carry a name: the
+ * server doesn't know group names, and 1:1 names there are profile names,
+ * not your phonebook name for them.
+ */
+export async function getConversationTitle(chatRoomJid: string): Promise<string | null> {
+  const contact = await getContactByJid(chatRoomJid);
+  return contact?.PHONEBOOK_CONTACT_NAME ?? contact?.CONTACT_NAME ?? null;
+}
+
+/**
+ * Sign-out teardown for the chat side. Removes this device's push
+ * subscription first, while the connection is still up, then disconnects.
+ */
+export async function teardownForLogout(): Promise<void> {
+  await pushService.unregisterPush();
+  disconnect();
 }
 
 /**

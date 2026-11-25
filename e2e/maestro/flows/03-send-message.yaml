@@ -1,0 +1,27 @@
+# Device -> bot: the stanza reaches the bot with the right body/msgtype, and the
+# bubble is addressable by the same id the bot saw.
+appId: net.jewelchat.app
+name: 03-send-message
+tags: [chat]
+---
+# Foreground without force-stopping: a killed app only catches up on
+# missed messages from its last *background* time (see e2e/README.md).
+- launchApp:
+    stopApp: false
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: alice }
+- runFlow:
+    file: ../subflows/send-from-device.yaml
+    env: { BOT: alice, TEXT: "Hi Alice ${output.runId}" }
+- assertTrue: ${output.bot.msgtype == '0'}
+- assertVisible:
+    id: "chat-detail.message.${output.bot.id}.meta"
+# TODO: assert the tick reaches "seen". Blocked on the design system's
+# DeliveryStatus: its testID sits on a react-native-svg icon, which never
+# reaches the native view tree (`.status` is absent on device), and every
+# state would share that one id anyway. Needs a wrapping View with the
+# testID + an accessibilityLabel per state.

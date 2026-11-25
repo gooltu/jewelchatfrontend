@@ -1,7 +1,14 @@
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pin, PinOff, Archive, ArchiveRestore, Trash2 } from 'lucide-react-native';
-import { useStyles, type ThemeColors, radius, spacing, typography } from '@components/design-system';
+import {
+  useStyles,
+  subTestID,
+  type ThemeColors,
+  radius,
+  spacing,
+  typography,
+} from '@components/design-system';
 import * as chatService from '@services/chatService';
 import type { Conversation } from '@app-types/chat';
 
@@ -9,6 +16,9 @@ interface ConversationActionSheetProps {
   visible: boolean;
   conversation: Conversation | null;
   onClose: () => void;
+  /** Root id for the sheet; rows get `.pin`/`.unpin`, `.archive`/`.unarchive`,
+   * `.delete`, and the backdrop `.backdrop`. */
+  testID?: string;
 }
 
 /**
@@ -17,7 +27,12 @@ interface ConversationActionSheetProps {
  * same Modal pattern as MessageActionSheet/JewelStoreSheet. Pin/Unpin,
  * Archive/Unarchive, Delete conversation.
  */
-export function ConversationActionSheet({ visible, conversation, onClose }: ConversationActionSheetProps) {
+export function ConversationActionSheet({
+  visible,
+  conversation,
+  onClose,
+  testID,
+}: ConversationActionSheetProps) {
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   if (!conversation?.JID) return null;
@@ -47,20 +62,28 @@ export function ConversationActionSheet({ visible, conversation, onClose }: Conv
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      <Pressable testID={subTestID(testID, 'backdrop')} style={styles.backdrop} onPress={onClose} />
+      <View testID={testID} style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
         <ActionRow
+          testID={subTestID(testID, conversation.IS_PINNED ? 'unpin' : 'pin')}
           icon={conversation.IS_PINNED ? PinOff : Pin}
           label={conversation.IS_PINNED ? 'Unpin' : 'Pin'}
           onPress={() => void handleTogglePin()}
         />
         <ActionRow
+          testID={subTestID(testID, conversation.IS_ARCHIVED ? 'unarchive' : 'archive')}
           icon={conversation.IS_ARCHIVED ? ArchiveRestore : Archive}
           label={conversation.IS_ARCHIVED ? 'Unarchive' : 'Archive'}
           onPress={() => void handleToggleArchive()}
         />
-        <ActionRow icon={Trash2} label="Delete conversation" destructive onPress={handleDelete} />
+        <ActionRow
+          testID={subTestID(testID, 'delete')}
+          icon={Trash2}
+          label="Delete conversation"
+          destructive
+          onPress={handleDelete}
+        />
       </View>
     </Modal>
   );
@@ -71,15 +94,17 @@ function ActionRow({
   label,
   destructive,
   onPress,
+  testID,
 }: {
   icon: typeof Pin;
   label: string;
   destructive?: boolean;
   onPress: () => void;
+  testID?: string;
 }) {
   const styles = useStyles(makeStyles);
   return (
-    <Pressable style={styles.row} onPress={onPress}>
+    <Pressable testID={testID} style={styles.row} onPress={onPress}>
       <Icon size={20} color={destructive ? styles.destructiveColor.color : styles.rowIcon.color} />
       <Text style={[typography.bodyMd, styles.rowLabel, destructive && styles.destructiveColor]}>
         {label}

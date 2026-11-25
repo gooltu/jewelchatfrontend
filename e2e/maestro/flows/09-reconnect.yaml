@@ -1,0 +1,42 @@
+# Regression: after a disconnect/reconnect the app must still PROCESS incoming
+# stanzas. Strophe wipes connection.handlers on every disconnect; the app used
+# to never re-register them on a reused Connection, so everything received
+# after a reconnect was silently dropped (chatService.
+# registerStanzaHandlersForSession). Covers both a network drop (airplane
+# mode) and a background/foreground cycle. Android only: setAirplaneMode.
+appId: net.jewelchat.app
+name: 09-reconnect
+tags: [chat, android-only, regression]
+---
+- launchApp:
+    stopApp: false
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+# Baseline (also creates the chat-list row on a fresh install): incoming works
+# before any reconnect.
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: alice, TEXT: "Before reconnect ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-ack, BOT: alice, MSG_ID: "${output.bot.id}", KIND: received }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: alice }
+
+# 1) Network drop.
+- setAirplaneMode: enabled
+- waitForAnimationToEnd:
+    timeout: 3000
+- setAirplaneMode: disabled
+- runFlow: ../subflows/expect-incoming-works.yaml
+
+# 2) Background -> foreground (the app disconnects in the background).
+- pressKey: Home
+- waitForAnimationToEnd:
+    timeout: 3000
+- launchApp:
+    stopApp: false
+- runFlow: ../subflows/dismiss-logbox.yaml
+- runFlow: ../subflows/expect-incoming-works.yaml

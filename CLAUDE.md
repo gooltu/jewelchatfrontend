@@ -23,13 +23,18 @@ access to the database, the chat server, and the game server — screens never i
 | Login/logout, secure-store tokens | `services/authService.ts` |
 | Auth tokens | `expo-secure-store` (never AsyncStorage, never Redux) |
 | Local pool of server-issued, unattached jewels + batch verification code + fetch cooldown | `store/slices/jewelPoolSlice.ts`, drawn from only via `services/jewelPoolService.ts` |
-| Firebase App Check attestation setup + token fetching (currently disabled, see below) | `services/appCheckService.ts` |
+| Firebase App Check attestation setup + token fetching (enabled client-side; server enforcement is a flag, see below) | `services/appCheckService.ts` |
 | Photo/video/voice-note upload, download+disk-cache, cap-checking | `media/mediaUploadService.ts` + `media/s3Upload.ts`, orchestrated only via `services/chatService.ts` |
 | Own profile-pic upload + any user's resolved/cached avatar source | `services/profilePicService.ts`, consumed via `hooks/useAvatarSource.ts` |
 | 1:1 peer online/offline state (ephemeral) | `store/slices/chatSlice.ts`'s `presence` entity-adapter collection |
 | XMPP roster + presence-subscription protocol (add/subscribe/accept/reject) | `chatserver/roster.ts`, orchestrated only via `services/chatService.ts` |
 | One-time roster/presence backfill "already ran" flag (persisted) | `store/slices/rosterSlice.ts` |
+| Gift-task catalog (paginated `/getGiftTasks`) + per-gift jewel-requirement cache (not persisted); per-cycle target level + redeem | `store/slices/giftTasksSlice.ts`, fetched/redeemed only via `services/gameService.ts`; level record is per-mount local state in `hooks/useGiftTaskLevel.ts` |
 | Reply/forward/star/delete-for-me, archive/pin/delete-conversation | `services/chatService.ts` (`forwardMessage`, `toggleMessageStar`, `deleteMessageForMe`, `setConversationArchived`, `setConversationPinned`, `deleteConversation`) |
+| Remote push registration (XEP-0357 enable/disable with the FCM token), notification channel, per-thread dismiss | `services/pushService.ts` (stanzas: `chatserver/push.ts`), called only from `chatService` (on every `connected`, on logout, and in `setActiveConversation`) |
+| Notification presentation and tap-to-open routing | `notifications/pushNotifications.ts` (`useNotificationDeepLinking`, mounted in `App.tsx`) |
+| Accepted in-app disclosures (contacts prominent disclosure), persisted | `store/slices/consentSlice.ts`, written by `contactSyncService.ensureContactsDisclosureAccepted` |
+| Privacy policy / terms / account-deletion URLs | `app.config.ts` `extra` → `config/env.ts` → `utils/legalLinks.ts` (pages served by ServerProjextX) |
 
 ## Media attachments (photo / video / voice note)
 
@@ -172,41 +177,50 @@ back for every jewel collected from it.
 
 ## Firebase App Check
 
-Gates `POST /registerPhoneNumber`, `/verifyCode`, `/getAccessToken` server-side. **Currently
-disabled** in this repo — no Firebase project registered yet, no `google-services.json`/
-`GoogleService-Info.plist` committed. The wiring is fully written but turned off at three points:
-`app.config.ts`'s `plugins` array (both `@react-native-firebase/*` entries commented out, along
-with the `googleServicesFile`/`entitlements` config they need), `App.tsx`'s `configureAppCheck()`
-call (commented out), and `react-native.config.js` (excludes
-`@react-native-firebase/app-check` from native autolinking entirely).
+App Check gates `POST /registerPhoneNumber`, `/verifyCode` and `/getAccessToken` on the server, but only once ServerProjextX sets `APP_CHECK_ENABLED=true`. It is **enabled in the app**:
+- Both `@react-native-firebase/*` plugins are active in `app.config.ts`.
+- `configureAppCheck()` runs from `App.tsx`.
+- `react-native.config.js` (which used to exclude app-check from autolinking) is deleted.
 
-That last one is load-bearing, not optional: `@react-native-firebase/app-check`'s native Android
-module calls `FirebaseAppCheck.getInstance()` **in its own constructor**, at React Native's
-native-module-registration time — before any JS runs. With no Firebase project configured this
-throws and crashes the app at startup, and no JS-level try/catch can prevent it (confirmed via
-`adb logcat`, not guesswork — the crash stack is `NativeRNFBTurboAppCheck.<init> →
-ReactNativeFirebaseAppCheckPackage.createNativeModules`). Disabling the JS call site alone is not
-enough; the native module must not be autolinked at all while unconfigured.
+Firebase project: `jewel-chat-1984`. `google-services.json` is at the repo root and gitignored; `app.config.ts` only references it when the file exists.
 
-Also load-bearing: **`expo run:android`/`expo run:ios` do NOT re-sync native `android/`/`ios/`
-directories from `app.config.ts` if those directories already exist on disk** — they only
-auto-prebuild when the native folders are missing. Both are gitignored here (continuous native
-generation / CNG workflow), so after *any* `app.config.ts` or `react-native.config.js` change that
-needs to reach the native build, run `npx expo prebuild --clean` explicitly before
-`expo run:android`/`expo run:ios` — don't assume a plain rebuild picks it up.
+There is no iOS app or `GoogleService-Info.plist` yet. `app.config.ts` adds the iOS `googleServicesFile` and the App Attest entitlement only when that file exists, so iOS prebuild is expected to fail until it's added.
 
-When re-enabling for real: register the apps in Firebase console (Android package / iOS bundle id
-are both `net.jewelchat.app`), add the debug/release keystore SHA-256 fingerprints (`keytool -list
--v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android -keypass
-android`), drop the two config files at the repo root, uncomment the three disabled points above,
-remove the `react-native.config.js` exclusion, then `expo prebuild --clean` + rebuild.
+Providers:
+- **Debug builds:** the debug provider. Register its logged token in Firebase console › App Check › Manage debug tokens.
+- **Release builds:** Play Integrity. Sideloaded release builds fail app recognition, so verify through a Play testing track before turning on server enforcement. `docs/play-store-release.md` §4 has the rollout order.
 
-Once enabled: `gameserver/client.ts` attaches a fresh `X-Firebase-AppCheck` header (via
-`appCheckService.getAppCheckToken()`, registered through `setAppCheckTokenProvider`) only on the
-three protected paths, and converts a 403 from any of them into a thrown `AttestationError`
-(distinct from the `{error:true, message}`-shaped validation errors those same endpoints return
-on a 2xx) so callers can tell "this device failed attestation" apart from a normal validation
-failure.
+**Load-bearing, still true:** with app-check autolinked, its native Android module calls `FirebaseAppCheck.getInstance()` in its own constructor at module-registration time, before any JS runs. If `google-services.json` is missing from a build, that crashes at startup, and no JS try/catch can stop it. That's why the file exclusion existed. If you ever need a build without Firebase config, put the `react-native.config.js` exclusion back; dropping the JS call isn't enough.
+
+Also load-bearing: **`expo run:android` / `expo run:ios` do NOT re-sync `android/` / `ios/` from `app.config.ts` if those directories already exist.** They only prebuild automatically when the folders are missing. Both are gitignored (CNG). After *any* `app.config.ts` or config-plugin change, run `npx expo prebuild --clean` before `expo run:*`.
+
+`gameserver/client.ts` attaches a fresh `X-Firebase-AppCheck` header (via `appCheckService.getAppCheckToken()`, registered through `setAppCheckTokenProvider`) only on the three protected paths. It converts a 403 from any of them into a thrown `AttestationError`, separate from the 2xx `{error:true, message}` validation errors those endpoints return, so callers can tell "this device failed attestation" apart from a normal validation failure.
+
+## Push notifications
+
+Push runs entirely over XMPP:
+1. On every `connected`, `pushService.ensurePushRegistered` asks for `POST_NOTIFICATIONS`, gets the **native FCM token** (`getDevicePushTokenAsync`, not an Expo push token) and sends an XEP-0357 `<enable>` to `pubsub.jewelchat.net`. The node is a stable per-install id in secure-store.
+2. MongooseIM (`mod_event_pusher.push` + `mod_push_service_mongoosepush`) stores the subscription. When a message arrives for the user with no live session, it POSTs to ServerProjextX `/mongooseim/pushnotification/<PUSH_PATH_SECRET>/v3/notification/<fcm-token>`.
+3. ServerProjextX sends an FCM notification+data message through firebase-admin on channel `messages`, with data `{chatRoomJid, title, isGroup}` (see `utils/buildFcmMessage.js`).
+4. Tapping it routes to `ChatDetail` (`useNotificationDeepLinking`).
+
+**Load-bearing:** `useAppState` now **disconnects XMPP on every real `background`**. While a session (or a stream-management resumable one) is alive, MongooseIM keeps routing messages to it, so no push is ever sent. Foreground reconnects and backfills through MAM as before. The transient-background exception (image picker) still skips the disconnect.
+
+Other rules:
+- Logout sends `<disable>` (`chatService.teardownForLogout`) before disconnecting, capped at 3s.
+- A notification for the currently open thread is suppressed (`setNotificationHandler`).
+- Opening a thread dismisses its tray notifications.
+- Android only. iOS would need APNs through FCM and a `GoogleService-Info.plist`.
+- Remote push doesn't work in Expo Go (SDK 53+). Use `expo run:android` or a release build.
+- The real MongooseIM v3 payload shape (`alert.title` = bare sender JID, or the room JID for MUC Light) is mapped defensively in `buildFcmMessage`. Confirm it against a live payload when first testing on a device.
+
+## Play Store compliance
+
+Release checklist, Data safety answers, reviewer login and the deletion-request runbook: `docs/play-store-release.md`.
+- **Legal pages:** `https://game.jewelchat.net/privacy`, `/terms`, `/account/delete`, served by ServerProjextX `controllers/legal.js` + `public/`. They are linked from Settings ("Privacy & account") and the phone-entry screen (`LegalConsentText`).
+- **Account deletion is request-based** on purpose. The Settings row opens the web form, and an admin processes the request (ServerProjextX `scripts/process-deletion.js`), because OTP is currently fixed at 888888. There is no in-app self-serve delete API.
+- **Contacts:** `contactSyncService.syncPhonebook` shows a prominent disclosure Alert (accepted once, persisted in `consentSlice`) before `Contacts.requestPermissionsAsync`. `WRITE_CONTACTS` is stripped through `android.blockedPermissions`.
+- **Release signing:** `plugins/withReleaseSigning.js` reads `JEWELCHAT_UPLOAD_*` from `~/.gradle/gradle.properties`, falling back to the debug key when unset. Build with `npm run build:android:release`. Bump `ANDROID_VERSION_CODE` in `app.config.ts` for every upload.
 
 ## XMPP notes
 
@@ -221,10 +235,21 @@ statusCallback)`, `.addHandler(...)`, `.send()`/`.sendIQ()`. Confirmed by readin
 reconnect backoff: `stropheClient.ts`. Stanza → SQLite mapping (dedup, reactions, chat-states):
 `stropheEvents.ts`. Type shim (the package ships no `.d.ts`): `src/types/react-native-strophe.d.ts`.
 
-One real dev-client caveat exists, but it's about **push notifications, not XMPP**: Expo Go
-dropped remote push support in SDK 53+, so `expo-notifications` remote push needs
-`expo-dev-client`/EAS build. Local notifications still work in Expo Go. See
-`src/notifications/pushNotifications.ts`.
+**Load-bearing: stanza handlers are re-registered on every `connected`.** Strophe's
+`_doDisconnect` empties `connection.handlers` on every disconnect, and `stropheClient.connect()`
+reuses the same `Connection` object across reconnects — so
+`chatService.registerStanzaHandlersForSession` must run on each transition to `connected`
+(deleting the previous `addHandler` refs first, so it never double-registers). Don't
+reintroduce a once-per-Connection guard: that shipped once and made every reconnected session
+silently drop all incoming messages/receipts/typing/presence (caught by `e2e/` flow
+`09-reconnect`).
+
+**SASL is PLAIN-only over `wss:`/`https:`** (`stropheClient.resolveSaslMechanisms`). Strophe's
+default SCRAM-SHA-1 runs 10,000 PBKDF2 rounds in pure JS; on a slow device that took 8–27s and the
+server closed the stream mid-auth. TLS already protects the credential (the refresh token). An
+unencrypted `ws://` URL falls back to Strophe's defaults so the token is never sent in clear text.
+
+Remote push needs a dev or release build (Expo Go dropped remote push in SDK 53+). That's a push limitation, not an XMPP one. See "Push notifications" above.
 
 ## Design system
 
@@ -233,6 +258,29 @@ All UI primitives/theme come from `@nocturnalflow/design-system` — never build
 barrel; import from `@components/design-system` in app code, not the package directly, so screens
 don't couple to the package name. Full component/prop/token reference:
 `../NocturnalFlowRN/packages/design-system/CLAUDE.md`.
+
+## E2E testIDs (Maestro / Detox / RNTL)
+
+Design-system components only emit ids when given a root `testID`; they then derive child ids
+themselves (`.input`, `.send`, `.status`, …, see the design-system CLAUDE.md's testID table).
+App-side convention is `<screen>.<element>[.<record>]`, dot-separated kebab-case:
+
+- Headers are automatic: `HeaderAdapter` sets `<route-kebab>.header` (e.g.
+  `chat-detail.header.subtitle`, `chat-list.header.action.more`). Tab bar: `tabbar.tab.<TabName>`.
+- Chat detail: `chat-detail.composer` (ChatInputBar), `chat-detail.messages`, `chat-detail.typing`,
+  `chat-detail.message.<SENDER_MSG_ID>` (+ `.row`, `.jewel`, `.forwarded`, `.reactions`,
+  `.reaction.<i>`, `.failed`, `.media-spinner`), action sheets `message-actions.*` /
+  `conversation-actions.*` (toggle rows are named by what they'll do: `.star`/`.unstar`,
+  `.pin`/`.unpin`, `.archive`/`.unarchive`).
+- Lists: `chat-list.row.<jid-node>`, `archived-chats.row.…`, `forward-message.row.…`,
+  `select-contact.row.<phone-digits>`, `select-members.row.<phone-digits>`, `starred.message.…`.
+- Settings: `settings.privacy-policy`, `settings.terms`, `settings.delete-account`. Phone entry legal line: `phone-entry.legal`.
+- Auth: `phone-entry.phone`/`.next`, `otp.digit.<0-n>`/`.verify`/`.resend`, `referral.*`,
+  `onboarding.get-started`.
+
+Record segments must be ids that are identical on every device (`SENDER_MSG_ID`, the JID's
+userId, the phone number) — never the per-device SQLite `_ID` — so a multi-device test or bot peer
+can address the row it created. Build them via `components/shared/testIDs.ts`, not by hand.
 
 ## Schema
 
@@ -254,7 +302,7 @@ schema is base DDL + every migration applied in order, not `schema.ts` alone. La
   `@notifications`, `@store`, `@components`, `@app-types` (not `@types` — that prefix is reserved by
   TypeScript's own `@types/*` package resolution and collides with it), `@config`.
 - redux-persist whitelist (`src/store/index.ts`) currently covers `theme`, `game`, `factory`,
-  `achievements`, `invitees`, `children`, `roster`, `jewelPool` — each entry has an inline comment
+  `achievements`, `invitees`, `children`, `roster`, `jewelPool`, `consent` — each entry has an inline comment
   there explaining why it is (or, for slices like `chat`/`auth`, is not) persisted. Don't assume
   the list is just `['theme']`; check `store/index.ts` directly, it changes as features land.
 - `react-native-worklets` plugin is handled automatically by `babel-preset-expo` on Expo SDK 57 (design-system depends on
@@ -263,6 +311,7 @@ schema is base DDL + every migration applied in order, not `schema.ts` alone. La
 ## Commands
 
 - `npm start` / `npm run ios` / `npm run android` / `npm run web`
+- `npm run build:android:release`: production prebuild plus a signed `bundleRelease` AAB (see `docs/play-store-release.md`)
 - `npm run lint` — `expo lint` (flat `eslint.config.js`, ESLint 9 — not `.eslintrc.js`)
 - `npm run format` — prettier --write
 - `npm test` — jest (`jest-expo` preset). `jest.config.js` maps `immer` to its CJS build
@@ -270,3 +319,7 @@ schema is base DDL + every migration applied in order, not `schema.ts` alone. La
   unparsable ESM build, which breaks *any* test importing a `@reduxjs/toolkit` slice. Don't remove
   that mapping.
 - `npm run typecheck` — `tsc --noEmit`
+- `npm run e2e [-- <flow>]` — Maestro flows on one Android emulator against XMPP bot peers
+  (`e2e/bot/server.mjs`, `@xmpp/client` — deliberately not the app's own strophe code). Setup,
+  flow list and the bot HTTP API: `e2e/README.md`. Hits the real servers by default; test
+  accounts sign in with the server's temporary fixed OTP.

@@ -30,6 +30,7 @@ import {
   TypingIndicator,
   ChatInputBar,
   spacing,
+  subTestID,
   typography,
 } from '@components/design-system';
 import { useMessages } from '@hooks/useMessages';
@@ -61,6 +62,7 @@ import { toQuotedContent } from '../../../utils/quotedContent';
 import type { RootScreenProps, AppStackOptions } from '@navigation/types';
 import { MSG_TYPE, type ChatMessage } from '@app-types/chat';
 import { initialsFor } from './ChatListScreen';
+import { messageTestID } from '@components/shared/testIDs';
 import { MessageActionSheet } from '@components/shared/MessageActionSheet';
 import { ConversationActionSheet } from '@components/shared/ConversationActionSheet';
 
@@ -450,6 +452,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Animated.FlatList
+        testID="chat-detail.messages"
         style={[styles.list, listAnimatedStyle]}
         contentContainerStyle={styles.listContent}
         data={listItems}
@@ -463,19 +466,22 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
         // Inverted + newest-first data: ListHeaderComponent renders at the
         // visual bottom (right above the composer), which is where a
         // "peer is typing" indicator belongs.
-        ListHeaderComponent={isPeerTyping ? <TypingIndicator /> : null}
+        ListHeaderComponent={isPeerTyping ? <TypingIndicator testID="chat-detail.typing" /> : null}
         renderItem={({ item }) => {
           if (item.kind === 'divider') {
             return (
               <View style={styles.dividerRow}>
-                <SystemLabel text={item.label} />
+                <SystemLabel testID={`chat-detail.divider.${item.key}`} text={item.label} />
               </View>
             );
           }
           if (item.message.MSG_TYPE === MSG_TYPE.SYSTEM) {
             return (
               <View style={styles.dividerRow}>
-                <SystemLabel text={item.message.MSG_TEXT ?? ''} />
+                <SystemLabel
+                  testID={messageTestID(item.message)}
+                  text={item.message.MSG_TEXT ?? ''}
+                />
               </View>
             );
           }
@@ -494,7 +500,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
         }}
         ListEmptyComponent={
           !loading ? (
-            <View style={styles.empty}>
+            <View testID="chat-detail.empty" style={styles.empty}>
               <Text style={styles.emptyText}>Say hello 👋</Text>
             </View>
           ) : null
@@ -504,6 +510,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
       {jewelboxFullVisible ? (
         <View style={styles.toastWrap}>
           <Toast
+            testID="chat-detail.toast.jewelbox-full"
             variant="warning"
             title="Jewelbox full"
             description="You can't pick any more jewels right now."
@@ -515,6 +522,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
       {mediaError ? (
         <View style={styles.toastWrap}>
           <Toast
+            testID="chat-detail.toast.media-error"
             variant="warning"
             title="Can't send that"
             description={mediaError}
@@ -524,6 +532,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
       ) : null}
 
       <ChatInputBar
+        testID="chat-detail.composer"
         onSend={handleSend}
         onAttach={handleAttach}
         stickers={stickers}
@@ -552,6 +561,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
       />
 
       <MessageActionSheet
+        testID="message-actions"
         visible={!!actionSheetMessage}
         message={actionSheetMessage}
         onClose={() => setActionSheetMessage(null)}
@@ -566,6 +576,7 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
       />
 
       <ConversationActionSheet
+        testID="conversation-actions"
         visible={conversationSheetVisible}
         conversation={contact}
         onClose={() => setConversationSheetVisible(false)}
@@ -702,12 +713,14 @@ function MessageBubbleRow({
       (message.MSG_TYPE === MSG_TYPE.VIDEO && resolvedThumbUri === null) ||
       (message.MSG_TYPE === MSG_TYPE.VOICE && resolvedVoiceUri === null));
   const showMediaSpinner = isUploadingMedia || isDownloadingMedia;
+  const testID = messageTestID(message);
 
   return (
-    <View>
+    <View testID={subTestID(testID, 'row')}>
       <View style={jewelVisible ? styles.jewelRow : undefined}>
         {jewelVisible && jewelIconType ? (
           <JewelPickIcon
+            testID={subTestID(testID, 'jewel')}
             icon={jewelIconType}
             canPick={canPickJewel}
             onPick={() => void chatService.pickJewel(message)}
@@ -729,8 +742,13 @@ function MessageBubbleRow({
             alignItems: direction === 'outgoing' ? 'flex-end' : 'flex-start',
           }}
         >
-          {message.IS_FORWARD ? <Text style={styles.forwardedLabel}>Forwarded</Text> : null}
+          {message.IS_FORWARD ? (
+            <Text testID={subTestID(testID, 'forwarded')} style={styles.forwardedLabel}>
+              Forwarded
+            </Text>
+          ) : null}
           <MessageBubble
+            testID={testID}
             direction={direction}
             context={isGroup ? 'group' : 'direct'}
             senderName={resolvedSenderName ?? message.SENDER_NAME ?? undefined}
@@ -792,32 +810,47 @@ function MessageBubbleRow({
             status={direction === 'outgoing' ? bubbleStatus : undefined}
           />
           {showMediaSpinner ? (
-            <View style={styles.uploadSpinnerWrap} pointerEvents="none">
+            <View
+              testID={subTestID(testID, 'media-spinner')}
+              style={styles.uploadSpinnerWrap}
+              pointerEvents="none"
+            >
               <View style={styles.uploadSpinnerBadge}>
                 <ActivityIndicator color="#FFFFFF" />
               </View>
             </View>
           ) : null}
+          {/* Inside the aligned column (not after it) so the pills follow the
+              bubble: right edge for outgoing, left edge for incoming, and
+              past the jewel icon when one is showing. */}
+          {reactions.length > 0 ? (
+            <View testID={subTestID(testID, 'reactions')} style={styles.reactionsRow}>
+              {reactions.map((r, i) => (
+                <ReactionPill
+                  key={r.emoji}
+                  testID={subTestID(testID, 'reaction', i)}
+                  emoji={r.emoji}
+                  count={r.count}
+                />
+              ))}
+            </View>
+          ) : null}
         </View>
       </View>
-      {reactions.length > 0 ? (
-        <View style={styles.reactionsRow}>
-          {reactions.map((r) => (
-            <ReactionPill key={r.emoji} emoji={r.emoji} count={r.count} />
-          ))}
-        </View>
-      ) : null}
       {status === 'failed' ? (
-        <FailedCaption onRetry={() => void chatService.retryFailedMessage(message)} />
+        <FailedCaption
+          testID={subTestID(testID, 'failed')}
+          onRetry={() => void chatService.retryFailedMessage(message)}
+        />
       ) : null}
     </View>
   );
 }
 
-function FailedCaption({ onRetry }: { onRetry: () => void }) {
+function FailedCaption({ onRetry, testID }: { onRetry: () => void; testID?: string }) {
   const styles = useStyles(makeStyles);
   return (
-    <Pressable onPress={onRetry} hitSlop={8}>
+    <Pressable testID={testID} onPress={onRetry} hitSlop={8}>
       <Text style={styles.failedCaption}>Failed to send · tap to retry</Text>
     </Pressable>
   );
@@ -838,7 +871,9 @@ function JewelPickIcon({
   onPick,
   onCapped,
   onAnimationEnd,
+  testID,
 }: {
+  testID?: string;
   icon: SVGIconName;
   canPick: boolean;
   onPick: () => void;
@@ -873,7 +908,7 @@ function JewelPickIcon({
   };
 
   return (
-    <Pressable onPress={handlePress} hitSlop={8}>
+    <Pressable testID={testID} onPress={handlePress} hitSlop={8}>
       <Animated.View style={animatedStyle}>
         <SVGImageIcon icon={icon} size={24} />
       </Animated.View>

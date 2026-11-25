@@ -1,0 +1,24 @@
+# The app only imports the device phonebook when Select Contact mounts
+# (contactSyncService.syncPhonebook). Visit it so bot ${BOT}'s seeded number
+# is a known Contact — required before the app accepts its presence subscribe.
+appId: net.jewelchat.app
+---
+- runFlow: to-chat-list.yaml
+- tapOn:
+    id: "chat-list.new-message"
+# Play prominent disclosure (contactSyncService.ensureContactsDisclosureAccepted),
+# shown once per install before the contacts permission is requested. The
+# dialog opens from the screen's mount effect, so let that settle first.
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      visible: "Find friends on Jewel Chat"
+    commands:
+      - tapOn: "Continue"
+- extendedWaitUntil:
+    visible:
+      id: "select-contact.row.91${output.bots[BOT].phone}"
+    timeout: 15000
+- tapOn:
+    id: "select-contact.header.back"

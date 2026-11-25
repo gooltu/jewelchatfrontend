@@ -87,6 +87,9 @@ declare module 'react-native-strophe' {
       CONNTIMEOUT: number;
     };
     NS: Record<string, string>;
+    /** SASL mechanism constructors, for `new Connection(url, { mechanisms: [...] })`. */
+    SASLPlain: unknown;
+    SASLSHA1: unknown;
     getBareJidFromJid(jid: string): string | null;
     getNodeFromJid(jid: string): string | null;
     getDomainFromJid(jid: string): string | null;

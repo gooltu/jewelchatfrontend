@@ -1,0 +1,18 @@
+# Maestro workspace config — `maestro test e2e/maestro` (see e2e/README.md).
+# Flows share one logged-in app session, so order matters: login first.
+flows:
+  - "flows/*"
+executionOrder:
+  continueOnFailure: false
+  flowsOrder:
+    - 01-login
+    - 02-receive-message
+    - 03-send-message
+    # Reconnect-forcing flows run early on purpose: every flow after them then
+    # runs on a reconnected session (regression guard for the handler wipe).
+    - 07-offline-queue
+    - 09-reconnect
+    - 04-typing-indicator
+    - 05-reply
+    - 06-reaction
+    - 08-presence

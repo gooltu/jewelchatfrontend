@@ -1,31 +1,36 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import Constants from 'expo-constants';
 import { navigationRef } from '@navigation/AppNavigator';
+import { store } from '@store/index';
+import * as chatService from '@services/chatService';
 
 /**
- * expo-notifications setup + deep-link routing into the relevant
- * conversation screen.
+ * Notification presentation and tap-to-open routing. Registration (the
+ * permission prompt, the FCM token, the XEP-0357 enable) lives in
+ * services/pushService.ts.
  *
- * IMPORTANT: as of Expo SDK 53+, Expo Go no longer supports *remote* push
- * notifications on Android/iOS — only a custom dev client (expo-dev-client
- * + `expo prebuild`/EAS build) can receive/register for real push. Local
- * notifications (Notifications.scheduleNotificationAsync) still work fine
- * in Expo Go. This is a real deviation from "plain Expo Go" for this app,
- * separate from — and unrelated to — react-native-strophe (which has no
- * such restriction; see chatserver/stropheClient.ts's header comment).
+ * Remote pushes come from ServerProjextX's pushnotificationv3 as FCM
+ * notification+data messages:
+ * - App in background or killed: Android draws them itself on the
+ *   `messages` channel.
+ * - App in foreground: the handler below decides.
+ *
+ * Normally the app is disconnected from XMPP while backgrounded (see
+ * useAppState.ts), so the server treats the user as offline and pushes.
+ * While foregrounded and connected, no remote push is sent, because the
+ * message arrives over the socket. The handler only matters for the brief
+ * reconnect window right after returning to the foreground.
+ *
+ * Expo Go can't receive remote push (removed in SDK 53+). This needs a
+ * development or release build (expo run:android).
  */
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+/** Data keys set by ServerProjextX utils/buildFcmMessage.js. FCM data values are always strings. */
+interface RawChatNotificationData {
+  chatRoomJid?: unknown;
+  title?: unknown;
+  isGroup?: unknown;
+}
 
 export interface ChatNotificationData {
   chatRoomJid: string;
@@ -33,70 +38,81 @@ export interface ChatNotificationData {
   isGroup: boolean;
 }
 
-function isChatNotificationData(data: unknown): data is ChatNotificationData {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    typeof (data as ChatNotificationData).chatRoomJid === 'string'
-  );
+export function parseChatNotificationData(data: unknown): ChatNotificationData | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const raw = data as RawChatNotificationData;
+  if (typeof raw.chatRoomJid !== 'string' || !raw.chatRoomJid) return null;
+  return {
+    chatRoomJid: raw.chatRoomJid,
+    title: typeof raw.title === 'string' ? raw.title : '',
+    isGroup: raw.isGroup === true || raw.isGroup === 'true',
+  };
 }
 
-function routeToConversation(data: ChatNotificationData): void {
-  if (!navigationRef.isReady()) return;
+Notifications.setNotificationHandler({
+  handleNotification: async (notification) => {
+    const data = parseChatNotificationData(notification.request.content.data);
+    // Suppress a push for the conversation the user is looking at right now.
+    const isActiveThread =
+      data !== null && store.getState().chat.activeConversationJid === data.chatRoomJid;
+    return {
+      shouldShowBanner: !isActiveThread,
+      shouldShowList: !isActiveThread,
+      shouldPlaySound: !isActiveThread,
+      shouldSetBadge: false,
+    };
+  },
+});
+
+async function waitForNavigation(timeoutMs = 3_000): Promise<boolean> {
+  const started = Date.now();
+  while (!navigationRef.isReady()) {
+    if (Date.now() - started > timeoutMs) return false;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return true;
+}
+
+async function routeToConversation(data: ChatNotificationData): Promise<void> {
+  if (!(await waitForNavigation())) return;
+  const title =
+    (await chatService.getConversationTitle(data.chatRoomJid).catch(() => null)) ||
+    data.title ||
+    (data.isGroup ? 'Group' : 'Chat');
   // ChatDetail is a root-stack screen (sibling of App), not nested under
-  // ChatsTab — see RootStackParamList's doc comment in navigation/types.ts.
+  // ChatsTab. See RootStackParamList's doc comment in navigation/types.ts.
   navigationRef.navigate('ChatDetail', {
     chatRoomJid: data.chatRoomJid,
-    title: data.title,
+    title,
     isGroup: data.isGroup,
   });
 }
 
-export async function registerForPushNotificationsAsync(): Promise<string | null> {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-    });
-  }
-
-  if (!Device.isDevice) {
-    return null; // Simulators/emulators can't register for push.
-  }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  if (finalStatus !== 'granted') {
-    return null;
-  }
-
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
-  if (!projectId) {
-    // No EAS project linked yet — local notifications still work without this.
-    return null;
-  }
-
-  const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({ projectId });
-  return expoPushToken;
-}
-
-/** Call once near the app root (see App.tsx) to wire notification-tap deep links. */
-export function useNotificationDeepLinking(): void {
+/**
+ * Call once at the app root (App.tsx) to wire notification taps to the
+ * conversation. Covers taps while running, and the tap that cold-started the
+ * app (getLastNotificationResponseAsync). Only routes once signed in: a tap
+ * on a cold start waits for the auth state to settle and the SignedIn
+ * navigator to mount.
+ */
+export function useNotificationDeepLinking(isSignedIn: boolean): void {
   useEffect(() => {
+    if (!isSignedIn) return;
+
     const respondedSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      if (isChatNotificationData(data)) routeToConversation(data);
+      const data = parseChatNotificationData(response.notification.request.content.data);
+      if (data) void routeToConversation(data);
     });
 
     void Notifications.getLastNotificationResponseAsync().then((response) => {
-      const data = response?.notification.request.content.data;
-      if (isChatNotificationData(data)) routeToConversation(data);
+      const data = parseChatNotificationData(response?.notification.request.content.data);
+      if (data) {
+        void routeToConversation(data);
+        // Otherwise a later sign-in in the same process would replay this tap.
+        Notifications.clearLastNotificationResponse();
+      }
     });
 
     return () => respondedSubscription.remove();
-  }, []);
+  }, [isSignedIn]);
 }

@@ -64,7 +64,7 @@ export function OnboardingScreen({ navigation }: AuthScreenProps<'Onboarding'>) 
       </View>
 
       <View style={styles.footer}>
-        <ButtonPrimary label="Get Started" onPress={() => navigation.navigate('PhoneEntry')} />
+        <ButtonPrimary testID="onboarding.get-started" label="Get Started" onPress={() => navigation.navigate('PhoneEntry')} />
       </View>
     </SafeAreaView>
   );

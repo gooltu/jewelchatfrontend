@@ -53,7 +53,9 @@ export function CreateGroupDetailsScreen({ navigation, route }: RootScreenProps<
       >
         <View style={styles.content}>
           <Text style={[typography.labelLg, styles.label]}>Group name</Text>
-          <InputField placeholder="e.g. Weekend Trip" value={name} onChangeText={setName} autoFocus />
+          <InputField
+            testID="create-group.name"
+            placeholder="e.g. Weekend Trip" value={name} onChangeText={setName} autoFocus />
 
           <Text style={[typography.labelLg, styles.label, styles.membersLabel]}>
             {members.length} member{members.length === 1 ? '' : 's'}
@@ -64,6 +66,7 @@ export function CreateGroupDetailsScreen({ navigation, route }: RootScreenProps<
 
           <View style={styles.createButton}>
             <ButtonPrimary
+              testID="create-group.create"
               label="Create"
               onPress={() => void handleCreate()}
               disabled={!name.trim() || submitting}
@@ -72,7 +75,10 @@ export function CreateGroupDetailsScreen({ navigation, route }: RootScreenProps<
 
           {error ? (
             <View style={styles.toastWrap}>
-              <Toast variant="error" title="Couldn't create group" description={error} persist />
+              <Toast
+                testID="create-group.error"
+                variant="error"
+                title="Couldn't create group" description={error} persist />
             </View>
           ) : null}
         </View>

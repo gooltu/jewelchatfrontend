@@ -86,6 +86,25 @@ function resolveTransportUrl(): string {
   return env.chatserverUrl;
 }
 
+/**
+ * SASL mechanisms this app offers the server.
+ *
+ * Over an encrypted transport (`wss:`/`https:`) we offer ONLY `PLAIN`.
+ * Strophe's default would pick `SCRAM-SHA-1`, which runs PBKDF2 (10,000
+ * HMAC-SHA1 rounds) in pure JS on the JS thread: ~2s normally, but 8–27s on
+ * a throttled device — long enough that the chat server closed the stream
+ * after the late `<response>` every time, so the app could not log in at all
+ * (found by the e2e suite, see e2e/README.md). PLAIN is one round trip with
+ * no hashing; TLS already protects the credential (a refresh token) on the
+ * wire. Confirmed working against this server (the e2e bot uses it).
+ *
+ * Over an unencrypted transport (a local `ws://` dev server) PLAIN would send
+ * the token in clear text, so Strophe's defaults (SCRAM first) are kept.
+ */
+function resolveSaslMechanisms(url: string): unknown[] | undefined {
+  return /^(wss|https):/i.test(url) ? [Strophe.SASLPlain] : undefined;
+}
+
 export function getConnection(): StropheConnection | null {
   return connection;
 }
@@ -119,7 +138,8 @@ export function connect(jid: string, password: string): void {
   clearReconnectTimer();
 
   if (!connection) {
-    connection = new Strophe.Connection(resolveTransportUrl());
+    const url = resolveTransportUrl();
+    connection = new Strophe.Connection(url, { mechanisms: resolveSaslMechanisms(url) });
   }
 
   if (__DEV__) {

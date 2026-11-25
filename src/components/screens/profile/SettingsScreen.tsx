@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useState } from 'react';
-import { Gift, MoreVertical, Share2, Trophy, Wallet } from 'lucide-react-native';
+import { ChevronRight, FileText, Gift, MoreVertical, Share2, ShieldCheck, Trash2, Trophy, Wallet } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,12 +28,27 @@ import { useWalletCounts } from '@hooks/useWalletCounts';
 import * as authService from '@services/authService';
 import * as gameService from '@services/gameService';
 import { initialsFor } from '../../../utils/initials';
+import { openLegalLink, type LegalLink } from '../../../utils/legalLinks';
 import type { ProfileScreenProps, AppTabOptions } from '@navigation/types';
 import type { DiamondChecklistItem } from '@app-types/game';
 
 const THEME_MODES: ThemeMode[] = ['light', 'dark', 'system'];
 const crateIcon = require('../../../../assets/jewelbox.png');
 const gemIcon = require('../../../../assets/factory.png');
+
+interface LinkRow {
+  key: LegalLink;
+  label: string;
+  icon: LucideIcon;
+  testID: string;
+  destructive?: boolean;
+}
+
+const LEGAL_ROWS: LinkRow[] = [
+  { key: 'privacy', label: 'Privacy Policy', icon: ShieldCheck, testID: 'settings.privacy-policy' },
+  { key: 'terms', label: 'Terms of Service', icon: FileText, testID: 'settings.terms' },
+  { key: 'deleteAccount', label: 'Delete account', icon: Trash2, testID: 'settings.delete-account', destructive: true },
+];
 
 interface QuickAction {
   key: string;
@@ -153,6 +168,29 @@ export function SettingsScreen({ navigation }: ProfileScreenProps) {
           <Text style={styles.value}>{connectionStatus}</Text>
         </View>
 
+        <Text style={styles.sectionTitle}>Privacy & account</Text>
+        {LEGAL_ROWS.map((row) => {
+          const Icon = row.icon;
+          const tint = row.destructive ? colors.error : colors.onSurface;
+          return (
+            <Pressable
+              key={row.key}
+              testID={row.testID}
+              accessibilityRole="link"
+              onPress={() => openLegalLink(row.key)}
+              style={({ pressed }) => [styles.linkRow, pressed && { opacity: states.pressedOpacity }]}
+            >
+              <Icon size={20} color={tint} strokeWidth={2} />
+              <Text style={[styles.linkLabel, { color: tint }]}>{row.label}</Text>
+              <ChevronRight size={18} color={colors.onSurfaceVariant} />
+            </Pressable>
+          );
+        })}
+        <Text style={styles.linkCaption}>
+          Deleting your account permanently removes your profile, jewels, game progress and server chat history. Requests
+          are processed within 7 days.
+        </Text>
+
         <View style={styles.section}>
           <ButtonPrimary label="Sign out" onPress={() => void authService.logout()} />
         </View>
@@ -248,4 +286,20 @@ const makeStyles = (colors: ThemeColors) =>
     row: { flexDirection: 'row', gap: spacing.sm },
     modeButton: { flex: 1 },
     value: { ...typography.bodyMd, color: colors.onSurface },
+    linkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.outlineVariant,
+    },
+    linkLabel: { ...typography.bodyMd, flex: 1 },
+    linkCaption: {
+      ...typography.labelSm,
+      color: colors.onSurfaceVariant,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+    },
   });

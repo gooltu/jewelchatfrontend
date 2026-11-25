@@ -1,0 +1,18 @@
+# Types ${TEXT} into the open chat and sends it; then waits until bot ${BOT}
+# receives it. Leaves the device's message id in output.bot.id.
+appId: net.jewelchat.app
+---
+- runFlow: dismiss-logbox.yaml
+- tapOn:
+    id: "chat-detail.composer.input"
+- inputText: ${TEXT}
+- tapOn:
+    id: "chat-detail.composer.send"
+- runScript:
+    file: ../scripts/bot.js
+    env:
+      ACTION: wait-message
+      BOT: ${BOT}
+      CONTAINS: ${TEXT}
+- assertVisible:
+    id: "chat-detail.message.${output.bot.id}"

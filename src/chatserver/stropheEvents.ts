@@ -68,13 +68,18 @@ export interface StropheEventCallbacks {
  * `myJid` is required to detect the server's self-echo (submit confirmation
  * — see handleSelfEcho) and to correlate an inbound `<received>`/`<displayed>`
  * back to the sender's own outgoing row.
+ *
+ * Returns the `addHandler` refs so the caller can `deleteHandler` them before
+ * registering again. Strophe's `_doDisconnect` empties `connection.handlers`
+ * on every disconnect, so these must be re-registered on every (re)connect —
+ * see chatService.registerStanzaHandlersForSession.
  */
 export function registerStanzaHandlers(
   connection: StropheConnection,
   myJid: string,
   callbacks: StropheEventCallbacks = {},
-): void {
-  connection.addHandler(
+): unknown[] {
+  const messageHandler = connection.addHandler(
     (stanza) => {
       handleMessageStanza(stanza, connection, myJid, callbacks).catch((err) => {
         if (__DEV__) console.log('[handleMessageStanza] threw', err);
@@ -88,7 +93,7 @@ export function registerStanzaHandlers(
     null,
   );
 
-  connection.addHandler(
+  const presenceHandler = connection.addHandler(
     (stanza) => {
       handlePresenceStanza(stanza, myJid, callbacks);
       return true;
@@ -99,6 +104,8 @@ export function registerStanzaHandlers(
     null,
     null,
   );
+
+  return [messageHandler, presenceHandler];
 }
 
 /**

@@ -1,0 +1,27 @@
+# Bot reacts to a device message -> reaction pill renders under it.
+appId: net.jewelchat.app
+name: 06-reaction
+tags: [chat]
+---
+# Foreground without force-stopping: a killed app only catches up on
+# missed messages from its last *background* time (see e2e/README.md).
+- launchApp:
+    stopApp: false
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: alice }
+- runFlow:
+    file: ../subflows/send-from-device.yaml
+    env: { BOT: alice, TEXT: "React to me ${output.runId}" }
+# Keep the id: the next runScript overwrites output.bot.
+- evalScript: ${output.deviceMsgId = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: react, BOT: alice, MSG_ID: "${output.deviceMsgId}", EMOJIS: "👍" }
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.message.${output.deviceMsgId}.reaction.0"
+    timeout: 10000

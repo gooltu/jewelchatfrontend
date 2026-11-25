@@ -1,0 +1,22 @@
+# Dev builds only: React Native's LogBox can cover the UI —
+#  - the full-screen log inspector ("Log 1 of N", after a console.error), and
+#  - the "Open debugger to view warnings." toast, which sits over the composer.
+# A release build has neither; see e2e/README.md.
+appId: net.jewelchat.app
+---
+- repeat:
+    while:
+      visible:
+        text: "Log \\d+ of \\d+"
+    times: 10
+    commands:
+      - tapOn:
+          text: "Dismiss"
+- runFlow:
+    when:
+      visible:
+        text: "Open debugger to view warnings."
+    commands:
+      # The toast's ✕ has no element of its own; it's at the toast's right end.
+      - tapOn:
+          point: "92%,92%"

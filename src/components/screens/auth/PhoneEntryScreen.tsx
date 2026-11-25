@@ -12,6 +12,7 @@ import {
   Toast,
 } from '@components/design-system';
 import * as authService from '@services/authService';
+import { LegalConsentText } from '@components/shared/LegalConsentText';
 import type { AuthScreenProps } from '@navigation/types';
 
 export function PhoneEntryScreen({ navigation }: AuthScreenProps<'PhoneEntry'>) {
@@ -47,6 +48,7 @@ export function PhoneEntryScreen({ navigation }: AuthScreenProps<'PhoneEntry'>) 
             </View>
             <View style={styles.inputWrap}>
               <InputField
+                testID="phone-entry.phone"
                 keyboardType="number-pad"
                 maxLength={10}
                 value={phone}
@@ -56,14 +58,20 @@ export function PhoneEntryScreen({ navigation }: AuthScreenProps<'PhoneEntry'>) 
           </View>
 
           <ButtonPrimary
+            testID="phone-entry.next"
             label={submitting ? 'Sending…' : 'Next'}
             onPress={handleNext}
             disabled={phone.length !== 10 || submitting}
           />
 
+          <LegalConsentText testID="phone-entry.legal" />
+
           {error ? (
             <View style={styles.toastWrap}>
-              <Toast variant="error" title="Could not send code" description={error} persist />
+              <Toast
+                testID="phone-entry.error"
+                variant="error"
+                title="Could not send code" description={error} persist />
             </View>
           ) : null}
         </ScrollView>

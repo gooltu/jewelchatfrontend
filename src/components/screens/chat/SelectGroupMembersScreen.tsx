@@ -12,8 +12,10 @@ import {
   EmptyState,
   SkeletonRow,
   Toast,
+  subTestID,
 } from '@components/design-system';
 import { ContactAvatar } from '@components/shared/ContactAvatar';
+import { contactRowTestID } from '@components/shared/testIDs';
 import { useSelectableContacts, isActive } from '@hooks/useSelectableContacts';
 import { useGroupMembers } from '@hooks/useGroupMembers';
 import * as chatService from '@services/chatService';
@@ -115,6 +117,7 @@ export function SelectGroupMembersScreen({ navigation, route }: RootScreenProps<
         </View>
       ) : selectableContacts.length === 0 ? (
         <EmptyState
+          testID="select-members.empty"
           title="No contacts available"
           description={
             isAddMode
@@ -124,13 +127,16 @@ export function SelectGroupMembersScreen({ navigation, route }: RootScreenProps<
         />
       ) : (
         <FlatList
+          testID="select-members.list"
           data={selectableContacts}
           keyExtractor={(item) => String(item._ID)}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
             const isSelected = selected.has(item._ID);
+            const rowTestID = contactRowTestID('select-members', item);
             return (
               <Pressable
+                testID={rowTestID}
                 onPress={() => toggle(item)}
                 style={({ pressed }) => [styles.row, pressed && { opacity: states.pressedOpacity }]}
               >
@@ -143,7 +149,12 @@ export function SelectGroupMembersScreen({ navigation, route }: RootScreenProps<
                     {item.CONTACT_NAME ?? item.PHONEBOOK_CONTACT_NAME ?? 'Unknown'}
                   </Text>
                 </View>
-                <IconButton icon={Check} active={isSelected} onPress={() => toggle(item)} />
+                <IconButton
+                  testID={subTestID(rowTestID, isSelected ? 'selected' : 'unselected')}
+                  icon={Check}
+                  active={isSelected}
+                  onPress={() => toggle(item)}
+                />
               </Pressable>
             );
           }}
@@ -152,7 +163,10 @@ export function SelectGroupMembersScreen({ navigation, route }: RootScreenProps<
 
       {error ? (
         <View style={styles.toastWrap}>
-          <Toast variant="error" title="Couldn't add members" description={error} persist />
+          <Toast
+            testID="select-members.error"
+            variant="error"
+            title="Couldn't add members" description={error} persist />
         </View>
       ) : null}
       {submitting && (

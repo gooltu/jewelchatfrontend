@@ -1,0 +1,35 @@
+# Message sent while offline is queued, then delivered after reconnect
+# (syncService's retry-on-reconnect). Android only: setAirplaneMode.
+appId: net.jewelchat.app
+name: 07-offline-queue
+tags: [chat, android-only]
+---
+# Foreground without force-stopping: a killed app only catches up on
+# missed messages from its last *background* time (see e2e/README.md).
+- launchApp:
+    stopApp: false
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: alice }
+- setAirplaneMode: enabled
+# Going offline makes the dev build raise network warnings (LogBox toast).
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "chat-detail.composer.input"
+- inputText: "Offline ${output.runId}"
+- tapOn:
+    id: "chat-detail.composer.send"
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: expect-no-message, BOT: alice, CONTAINS: "Offline ${output.runId}", TIMEOUT_MS: "5000" }
+- setAirplaneMode: disabled
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-message, BOT: alice, CONTAINS: "Offline ${output.runId}", TIMEOUT_MS: "60000" }
+- assertVisible:
+    id: "chat-detail.message.${output.bot.id}"

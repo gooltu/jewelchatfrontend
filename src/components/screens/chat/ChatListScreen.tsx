@@ -16,8 +16,10 @@ import {
   InputField,
   SkeletonRow,
   SystemLabel,
+  subTestID,
 } from '@components/design-system';
 import { JewelStoreSheet } from '@components/shared/JewelStoreSheet';
+import { conversationRowTestID } from '@components/shared/testIDs';
 import { ConversationActionSheet } from '@components/shared/ConversationActionSheet';
 import { useAvatarSource } from '@hooks/useAvatarSource';
 import { useConversations } from '@hooks/useConversations';
@@ -110,6 +112,7 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
     <SafeAreaView style={styles.container} edges={[]}>
       <View style={styles.searchWrap}>
         <InputField
+          testID="chat-list.search"
           icon={Search}
           placeholder="Search messages"
           value={query}
@@ -119,6 +122,7 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
 
       {!loading && archivedConversations.length > 0 ? (
         <Pressable
+          testID="chat-list.archived"
           style={({ pressed }) => [styles.archivedRow, pressed && { opacity: states.pressedOpacity }]}
           onPress={() => navigation.navigate('ArchivedChats')}
         >
@@ -136,6 +140,7 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
         </View>
       ) : filtered.length === 0 ? (
         <EmptyState
+          testID="chat-list.empty"
           title={query ? 'No results' : 'No conversations yet'}
           description={
             query
@@ -145,16 +150,18 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
         />
       ) : (
         <FlatList
+          testID="chat-list.list"
           data={listRows}
           keyExtractor={(item) => (item.kind === 'divider' ? item.label : String(item.conversation._ID))}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) =>
             item.kind === 'divider' ? (
               <View style={styles.dividerRow}>
-                <SystemLabel text={item.label} />
+                <SystemLabel testID={`chat-list.divider.${item.label.toLowerCase()}`} text={item.label} />
               </View>
             ) : (
               <ChatListRow
+                testID={conversationRowTestID('chat-list', item.conversation)}
                 conversation={item.conversation}
                 onPress={() => openConversation(item.conversation)}
                 onLongPress={() => setActionSheetConversation(item.conversation)}
@@ -165,6 +172,7 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
       )}
 
       <FloatingButton
+        testID="chat-list.new-message"
         icon={Edit3}
         label="New message"
         onPress={() => navigation.navigate('SelectContact')}
@@ -173,6 +181,7 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
 
       <JewelStoreSheet visible={jewelStoreVisible} onClose={() => setJewelStoreVisible(false)} />
       <ConversationActionSheet
+        testID="conversation-actions"
         visible={!!actionSheetConversation}
         conversation={actionSheetConversation}
         onClose={() => setActionSheetConversation(null)}
@@ -208,16 +217,18 @@ function ChatsOptionsSheet({
   const styles = useStyles(makeStyles);
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={styles.optionsSheet}>
+      <Pressable testID="chat-list.options.backdrop" style={styles.backdrop} onPress={onClose} />
+      <View testID="chat-list.options" style={styles.optionsSheet}>
         <View style={styles.handle} />
         <Pressable
+          testID="chat-list.options.starred"
           style={({ pressed }) => [styles.optionsRow, pressed && { opacity: states.pressedOpacity }]}
           onPress={onOpenStarred}
         >
           <Text style={[typography.bodyMd, styles.optionsRowText]}>Starred Messages</Text>
         </Pressable>
         <Pressable
+          testID="chat-list.options.archived"
           style={({ pressed }) => [styles.optionsRow, pressed && { opacity: states.pressedOpacity }]}
           onPress={onOpenArchived}
         >
@@ -237,10 +248,12 @@ export function ChatListRow({
   conversation,
   onPress,
   onLongPress,
+  testID,
 }: {
   conversation: Conversation;
   onPress: () => void;
   onLongPress?: () => void;
+  testID?: string;
 }) {
   const avatarSource = useAvatarSource(conversation.JID);
   // Group presence isn't a single-person concept (same scope ChatDetailScreen
@@ -252,8 +265,9 @@ export function ChatListRow({
   );
   const presence: PresenceState = !presenceEntry ? 'none' : presenceEntry.isOnline ? 'online' : 'offline';
   return (
-    <Pressable onLongPress={onLongPress} delayLongPress={350}>
+    <Pressable testID={subTestID(testID, 'pressable')} onLongPress={onLongPress} delayLongPress={350}>
       <ChatListItem
+        testID={testID}
         name={conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? UNKNOWN_SENDER_LABEL}
         snippet={conversation.MSG_TEXT ?? ''}
         timestamp={formatTimestamp(conversation.LAST_MSG_CREATED_TIME)}

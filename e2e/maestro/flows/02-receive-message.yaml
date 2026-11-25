@@ -1,0 +1,32 @@
+# Bot -> device: message shows up in the chat list and the thread, and the
+# device sends both a delivery receipt and (once the thread is open) a read marker.
+appId: net.jewelchat.app
+name: 02-receive-message
+tags: [chat]
+---
+# Foreground without force-stopping: a killed app only catches up on
+# missed messages from its last *background* time (see e2e/README.md).
+- launchApp:
+    stopApp: false
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env:
+      ACTION: send
+      BOT: alice
+      TEXT: "Hello from Alice ${output.runId}"
+- evalScript: ${output.aliceMsgId = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-ack, BOT: alice, MSG_ID: "${output.aliceMsgId}", KIND: received }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: alice }
+- assertVisible:
+    id: "chat-detail.message.${output.aliceMsgId}.text"
+    text: "Hello from Alice ${output.runId}"
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-ack, BOT: alice, MSG_ID: "${output.aliceMsgId}", KIND: displayed }

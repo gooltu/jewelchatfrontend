@@ -13,10 +13,8 @@ import { FloatingLoadingPanel } from '@components/shared/FloatingLoadingPanel';
 import { getDatabase } from '@database/index';
 import * as authService from '@services/authService';
 import * as deviceSecurityService from '@services/deviceSecurityService';
-// Firebase App Check disabled for early development — see app.config.ts.
-// import { configureAppCheck } from '@services/appCheckService';
-// expo-notifications disabled for early development — see app.config.ts.
-// import { useNotificationDeepLinking } from '@notifications/pushNotifications';
+import { configureAppCheck } from '@services/appCheckService';
+import { useNotificationDeepLinking } from '@notifications/pushNotifications';
 import { useAppState } from '@hooks/useAppState';
 
 export default function App() {
@@ -57,7 +55,7 @@ function RootContent() {
 
   useEffect(() => {
     authService.configureGameserverAuth();
-    // configureAppCheck(); // re-enable alongside app.config.ts's Firebase plugins
+    configureAppCheck();
     void getDatabase().then(() => setDbReady(true));
     void authService.restoreSession();
     void deviceSecurityService.checkRootStatus().then((isRooted) => {
@@ -66,6 +64,8 @@ function RootContent() {
   }, []);
 
   useAppState();
+  const isSignedIn = useAppSelector((state) => state.auth.status === 'signedIn');
+  useNotificationDeepLinking(isSignedIn);
 
   if (!fontsLoaded || !dbReady) return null;
 

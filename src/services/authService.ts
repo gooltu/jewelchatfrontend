@@ -473,7 +473,7 @@ let logoutPromise: Promise<void> | null = null;
 export function logout(): Promise<void> {
   if (!logoutPromise) {
     logoutPromise = (async () => {
-      chatService.disconnect();
+      await chatService.teardownForLogout();
       await clearSession();
       store.dispatch(signedOut());
     })().finally(() => {

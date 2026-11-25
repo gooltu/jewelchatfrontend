@@ -40,7 +40,16 @@ interface RetryState {
 }
 
 const retryStateById = new Map<number, RetryState>();
+/** Message _IDs with an attemptSend currently running (see attemptSend). */
+const sendingIds = new Set<number>();
 let flushListenerRegistered = false;
+
+/** Cancels any pending retry timer for this message and forgets its attempts. */
+function clearRetry(id: number): void {
+  const state = retryStateById.get(id);
+  if (state?.timer) clearTimeout(state.timer);
+  retryStateById.delete(id);
+}
 
 function ensureFlushOnReconnect(): void {
   if (flushListenerRegistered) return;
@@ -66,7 +75,39 @@ export async function flushPendingMessages(): Promise<void> {
   }
 }
 
-async function attemptSend(message: ChatMessage): Promise<void> {
+/**
+ * Sends one pending message. Guarded so each message goes on the wire once:
+ *
+ * - Callers can hold a stale copy (a retry timer captured `message` while
+ *   offline; flushPendingMessages read it before another flush marked it
+ *   sent), so the row is re-read from SQLite and skipped if it's already
+ *   submitted, failed or deleted.
+ * - Two flushes can overlap after a foreground reconnect (the 'connected'
+ *   listener and chatService.resyncAfterForeground both call
+ *   flushPendingMessages), so an attempt already in progress for the same
+ *   _ID makes this a no-op.
+ * - A successful send cancels any retry timer still pending for it.
+ *
+ * Without these, a message sent while offline was delivered twice: once by
+ * the reconnect flush, and again ~10 s later when the leftover retry timer
+ * fired (found by e2e flow 07-offline-queue).
+ */
+async function attemptSend(queued: ChatMessage): Promise<void> {
+  if (sendingIds.has(queued._ID)) return;
+  sendingIds.add(queued._ID);
+  try {
+    const message = await getMessageById(queued._ID);
+    if (!message || message.IS_SUBMITTED || message.IS_ERROR) {
+      clearRetry(queued._ID);
+      return;
+    }
+    await sendNow(message);
+  } finally {
+    sendingIds.delete(queued._ID);
+  }
+}
+
+async function sendNow(message: ChatMessage): Promise<void> {
   const connection = getConnection();
   if (!connection || !isConnected() || !message.CHAT_ROOM_JID || !message.SENDER_MSG_ID) {
     scheduleRetry(message);
@@ -131,6 +172,7 @@ async function attemptSend(message: ChatMessage): Promise<void> {
     // branch) — harmless if that reflection arrives afterward, since
     // markSubmitted is idempotent.
     await markSubmitted(message._ID, Date.now());
+    clearRetry(message._ID);
     if (message.CHAT_ROOM_JID) submittedListener?.(message.CHAT_ROOM_JID);
   } catch (err) {
     if (__DEV__) console.log('[attemptSend] threw', err);

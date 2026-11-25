@@ -1,0 +1,29 @@
+# Opens the 1:1 chat with bot ${BOT} from the chat list.
+# Expects `output.bots` (bot.js ACTION=reset) to have run already.
+appId: net.jewelchat.app
+---
+- runFlow: to-chat-list.yaml
+# 01-login starts from a fresh install, so when a flow runs on its own the
+# chat with this bot doesn't exist yet. Have the bot say hello to create it
+# (an extra message is harmless if the row was just slow to appear).
+- runFlow:
+    when:
+      notVisible:
+        id: "chat-list.row.${output.bots[BOT].userId}"
+    commands:
+      - runScript:
+          file: ../scripts/bot.js
+          env: { ACTION: send, BOT: "${BOT}", TEXT: "Hello ${output.runId}" }
+      - runScript:
+          file: ../scripts/bot.js
+          env: { ACTION: wait-ack, BOT: "${BOT}", MSG_ID: "${output.bot.id}", KIND: received }
+- extendedWaitUntil:
+    visible:
+      id: "chat-list.row.${output.bots[BOT].userId}"
+    timeout: 20000
+- tapOn:
+    id: "chat-list.row.${output.bots[BOT].userId}"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.composer.input"
+    timeout: 10000

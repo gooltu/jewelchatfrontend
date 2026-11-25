@@ -43,3 +43,6 @@ yarn-error.*
 
 google-services.json
 GoogleService-Info.plist
+
+# E2E run output (Maestro screenshots/logs, bot log)
+e2e/.out/
