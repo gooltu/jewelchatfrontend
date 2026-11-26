@@ -48,6 +48,7 @@ import { useAppSelector } from '@store/hooks';
 import { typingSelectors, presenceSelectors } from '@store/slices/chatSlice';
 import * as authService from '@services/authService';
 import * as chatService from '@services/chatService';
+import * as unknownSenderService from '@services/unknownSenderService';
 import {
   checkMediaCaps,
   checkVoiceCaps,
@@ -65,6 +66,13 @@ import { initialsFor } from './ChatListScreen';
 import { messageTestID } from '@components/shared/testIDs';
 import { MessageActionSheet } from '@components/shared/MessageActionSheet';
 import { ConversationActionSheet } from '@components/shared/ConversationActionSheet';
+import { BlockedBanner, UnknownSenderPrompt } from '@components/shared/UnknownSenderPrompt';
+import {
+  UNKNOWN_SENDER_LABEL,
+  conversationDisplayName,
+  isUnknownSender,
+  needsUnknownSenderPrompt,
+} from '../../../utils/contactDisplay';
 
 /**
  * A day-divider is a pure render-time derivation over already-loaded
@@ -139,7 +147,7 @@ function buildListItems(messages: ChatMessage[]): ListItem[] {
 }
 
 export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDetail'>) {
-  const { chatRoomJid, title, isGroup } = route.params;
+  const { chatRoomJid, isGroup } = route.params;
   const styles = useStyles(makeStyles);
   const myJid = useAppSelector((state) => state.auth.jid);
   const { messages, loading, hasMore, loadMore } = useMessages(chatRoomJid);
@@ -171,6 +179,17 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
   // chatRoomJid/title/isGroup params.
   const [conversationSheetVisible, setConversationSheetVisible] = useState(false);
   const contact = useContact(chatRoomJid);
+  // The route's title is a snapshot from when the chat was opened; an
+  // unknown sender's number (or a name saved via "Add to contacts") arrives
+  // later, so prefer the live Contact row once it has anything better.
+  const title =
+    contact && !isGroup && conversationDisplayName(contact) !== UNKNOWN_SENDER_LABEL
+      ? conversationDisplayName(contact)
+      : route.params.title;
+  const showUnknownSenderPrompt = !isGroup && !!contact && needsUnknownSenderPrompt(contact);
+  const isBlocked = !isGroup && contact?.IS_BLOCKED === 1;
+  const [unknownSenderBusy, setUnknownSenderBusy] = useState(false);
+  const resolveRequestedRef = useRef(false);
   // Composer's reply-bar quote preview only — IMAGE/VIDEO need a real
   // resolved URI (MEDIA_CLOUD/_THUMBNAIL is an S3 key, not a loadable uri);
   // sticker/gif/voice/text don't need one, see toQuotedContent's fallback.
@@ -204,6 +223,27 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
     chatService.setActiveConversation(chatRoomJid);
     return () => chatService.setActiveConversation(null);
   }, [chatRoomJid]);
+
+  // Downloads an unknown sender's profile (phone number) for the prompt.
+  // ChatListScreen also does this on open, but a push deep link opens this
+  // screen directly, so check here too. Once per mount.
+  useEffect(() => {
+    if (isGroup || !contact || resolveRequestedRef.current) return;
+    if (!isUnknownSender(contact) || contact.CONTACT_NUMBER != null) return;
+    resolveRequestedRef.current = true;
+    void chatService.resolveUnknownSender(chatRoomJid);
+  }, [isGroup, contact, chatRoomJid]);
+
+  const runUnknownSenderAction = useCallback(async (action: () => Promise<unknown>) => {
+    setUnknownSenderBusy(true);
+    try {
+      await action();
+    } catch (error) {
+      if (__DEV__) console.log('[ChatDetailScreen] unknown-sender action failed:', error);
+    } finally {
+      setUnknownSenderBusy(false);
+    }
+  }, []);
 
   // Flushes any jewels picked in this conversation to the backend as soon
   // as the user navigates away — see authService.flushPickedJewels (also
@@ -531,34 +571,65 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
         </View>
       ) : null}
 
-      <ChatInputBar
-        testID="chat-detail.composer"
-        onSend={handleSend}
-        onAttach={handleAttach}
-        stickers={stickers}
-        gifs={gifs}
-        onSendSticker={handleSendSticker}
-        onSendGif={handleSendGif}
-        onSendVoiceNote={handleSendVoiceNote}
-        onRecordingStart={handleRecordingStart}
-        onRecordingStop={handleRecordingStop}
-        onDiscardRecording={handleDiscardRecording}
-        {...(previewUri
-          ? { previewPlaying: previewStatus.playing, onTogglePreviewPlayback: handleTogglePreviewPlayback }
-          : {})}
-        {...(replyingTo
-          ? {
-              replyTo: {
-                senderName:
-                  replyingTo.CREATOR_JID === myJid
-                    ? 'You'
-                    : (isGroup ? replyingToSenderName ?? replyingTo.SENDER_NAME : title) ?? 'Unknown',
-                content: toQuotedContent(replyingTo, replyingToMediaUri),
-              },
-              onCancelReply: () => setReplyingTo(null),
-            }
-          : {})}
-      />
+      {showUnknownSenderPrompt && contact ? (
+        <UnknownSenderPrompt
+          testID="unknown-sender"
+          contact={contact}
+          busy={unknownSenderBusy}
+          onContinue={() =>
+            void runUnknownSenderAction(() => unknownSenderService.acceptUnknownSender(chatRoomJid))
+          }
+          onBlock={() =>
+            void runUnknownSenderAction(() => unknownSenderService.blockContact(chatRoomJid))
+          }
+          onAdd={() =>
+            void runUnknownSenderAction(() =>
+              unknownSenderService.addUnknownSenderToContacts(chatRoomJid),
+            )
+          }
+        />
+      ) : isBlocked ? (
+        <BlockedBanner
+          testID="blocked-banner"
+          busy={unknownSenderBusy}
+          onUnblock={() =>
+            void runUnknownSenderAction(() => unknownSenderService.unblockContact(chatRoomJid))
+          }
+        />
+      ) : (
+        <ChatInputBar
+          testID="chat-detail.composer"
+          onSend={handleSend}
+          onAttach={handleAttach}
+          stickers={stickers}
+          gifs={gifs}
+          onSendSticker={handleSendSticker}
+          onSendGif={handleSendGif}
+          onSendVoiceNote={handleSendVoiceNote}
+          onRecordingStart={handleRecordingStart}
+          onRecordingStop={handleRecordingStop}
+          onDiscardRecording={handleDiscardRecording}
+          {...(previewUri
+            ? {
+                previewPlaying: previewStatus.playing,
+                onTogglePreviewPlayback: handleTogglePreviewPlayback,
+              }
+            : {})}
+          {...(replyingTo
+            ? {
+                replyTo: {
+                  senderName:
+                    replyingTo.CREATOR_JID === myJid
+                      ? 'You'
+                      : ((isGroup ? (replyingToSenderName ?? replyingTo.SENDER_NAME) : title) ??
+                        'Unknown'),
+                  content: toQuotedContent(replyingTo, replyingToMediaUri),
+                },
+                onCancelReply: () => setReplyingTo(null),
+              }
+            : {})}
+        />
+      )}
 
       <MessageActionSheet
         testID="message-actions"

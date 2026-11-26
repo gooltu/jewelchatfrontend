@@ -3,6 +3,7 @@
 // sub-import keeps the same function-based surface we use here.
 import { Alert } from 'react-native';
 import * as Contacts from 'expo-contacts/legacy';
+import { Contact as DeviceContact } from 'expo-contacts';
 import * as contactRepository from '@database/contactRepository';
 import * as contactLookupApi from '@gameserver/contactLookupApi';
 import * as chatService from './chatService';
@@ -86,6 +87,25 @@ export async function syncPhonebook(): Promise<void> {
     }
   } catch (error) {
     if (__DEV__) console.log('[contactSyncService] syncPhonebook failed:', error);
+  }
+}
+
+/**
+ * Opens the OS "new contact" form with this number pre-filled, so the user
+ * saves it themselves. Uses the SDK 57 class API, since the legacy
+ * presentFormAsync is gone. On Android it's an ACTION_INSERT intent, so no
+ * WRITE_CONTACTS permission (deliberately stripped in app.config.ts).
+ * Resolves true if the OS reports a contact was saved. Android's reply is not
+ * always reliable, so callers should re-sync the phonebook either way.
+ */
+export async function presentCreateContactForm(phone: number): Promise<boolean> {
+  try {
+    return await DeviceContact.presentCreateForm({
+      phones: [{ label: 'mobile', number: `+${phone}` }],
+    });
+  } catch (error) {
+    if (__DEV__) console.log('[contactSyncService] presentCreateContactForm failed:', error);
+    return false;
   }
 }
 

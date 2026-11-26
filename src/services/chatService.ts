@@ -53,6 +53,8 @@ import {
   getContactByNumber,
   getGroupContacts,
   insertBareContactIfMissing,
+  isBlockedJid,
+  setContactNumberIfUnset,
   getResolvedPhonebookContacts,
   attachJewelchatIdentity,
   mergePhonebookContactIntoJid,
@@ -111,7 +113,7 @@ export function subscribeToAllRooms(listener: RoomListener): () => void {
   };
 }
 
-function notifyRoom(jid: string): void {
+export function notifyRoom(jid: string): void {
   roomListeners.get(jid)?.forEach((listener) => listener());
   allRoomsListeners.forEach((listener) => listener());
 }
@@ -266,6 +268,10 @@ export async function resolveUnknownSender(jid: string): Promise<void> {
     const result = await contactLookupApi.downloadContactById(userId);
     if (!result) return;
 
+    // upsertContact's ON CONFLICT overwrites these, so carry over whatever the
+    // row already has: a block, or a name, must survive a re-resolve.
+    const existing = await getContactByJid(jid);
+
     // Deliberately not setting CONTACT_NAME from result.name — matches the
     // existing product rule in identityService.ts ("the game server's own
     // name field is fetched but deliberately never shown"). ON CONFLICT
@@ -274,15 +280,15 @@ export async function resolveUnknownSender(jid: string): Promise<void> {
       JEWELCHAT_ID: result.jewelchatId,
       JID: jid,
       CONTACT_NUMBER: null,
-      CONTACT_NAME: null,
-      PHONEBOOK_CONTACT_NAME: null,
+      CONTACT_NAME: existing?.CONTACT_NAME ?? null,
+      PHONEBOOK_CONTACT_NAME: existing?.PHONEBOOK_CONTACT_NAME ?? null,
       IS_GROUP: 0,
       STATUS_MSG: result.status,
       IS_REGIS: 1,
       IS_GROUP_ADMIN: null,
       IS_INVITED: 0,
-      IS_BLOCKED: 0,
-      IS_PHONEBOOK_CONTACT: 0,
+      IS_BLOCKED: existing?.IS_BLOCKED ?? 0,
+      IS_PHONEBOOK_CONTACT: existing?.IS_PHONEBOOK_CONTACT ?? 0,
       LAST_MSG_CREATED_TIME: null,
       MSG_TYPE: null,
       MSG_TEXT: null,
@@ -296,6 +302,10 @@ export async function resolveUnknownSender(jid: string): Promise<void> {
       const merged = await getContactByJid(jid);
       if (merged?.PHONEBOOK_CONTACT_NAME) {
         addToRosterAndSubscribe(jid, merged.PHONEBOOK_CONTACT_NAME);
+      } else {
+        // A stranger: keep their number so the unknown-sender prompt and
+        // the chat list can show it, and "Add to contacts" can pre-fill it.
+        await setContactNumberIfUnset(jid, phone);
       }
     }
     notifyRoom(jid);
@@ -674,6 +684,9 @@ async function persistArchivedMessage(message: ArchivedMessage, myJid: string): 
   // used instead of a read-first check for the same reason as in
   // stropheEvents.ts — one round trip, never overwrites a known contact.
   if (!message.isGroupMsg) {
+    // Device-side block (see unknownSenderService.ts): never store a
+    // blocked peer's backfilled messages.
+    if (!isOwnSentMessage && (await isBlockedJid(message.chatRoomJid))) return false;
     await insertBareContactIfMissing(message.chatRoomJid);
   }
 

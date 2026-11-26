@@ -94,7 +94,10 @@ export async function getContactByNumber(contactNumber: number): Promise<Contact
 
 /** Insert a new contact, or update the mutable fields if the JID already exists. */
 export async function upsertContact(
-  contact: Omit<Contact, '_ID' | 'UNREAD_COUNT' | 'IS_ARCHIVED' | 'IS_PINNED' | 'PINNED_TIME'>,
+  contact: Omit<
+    Contact,
+    '_ID' | 'UNREAD_COUNT' | 'IS_ARCHIVED' | 'IS_PINNED' | 'PINNED_TIME' | 'IS_UNKNOWN_ACCEPTED'
+  >,
 ): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
@@ -257,6 +260,38 @@ export async function resetUnreadCount(jid: string): Promise<void> {
 export async function setBlocked(jid: string, isBlocked: boolean): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(`UPDATE Contact SET IS_BLOCKED = ? WHERE JID = ?;`, [isBlocked ? 1 : 0, jid]);
+}
+
+/** True if this JID's Contact row is blocked — checked before storing any incoming 1:1 stanza. */
+export async function isBlockedJid(jid: string): Promise<boolean> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ IS_BLOCKED: number }>(
+    `SELECT IS_BLOCKED FROM Contact WHERE JID = ?;`,
+    [jid],
+  );
+  return row?.IS_BLOCKED === 1;
+}
+
+/** Records the user's "Continue" (or "Add to contacts") answer on the unknown-sender prompt. */
+export async function setUnknownAccepted(jid: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(`UPDATE Contact SET IS_UNKNOWN_ACCEPTED = 1 WHERE JID = ?;`, [jid]);
+}
+
+/**
+ * Stores a resolved sender's phone number on their JID row, but only if that
+ * row has none yet and no other row already holds the number. CONTACT_NUMBER
+ * is UNIQUE, so a plain UPDATE could fail. A phonebook-only row that holds
+ * the number should be folded in with mergePhonebookContactIntoJid first.
+ */
+export async function setContactNumberIfUnset(jid: string, phone: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE Contact SET CONTACT_NUMBER = ?
+    WHERE JID = ? AND CONTACT_NUMBER IS NULL
+      AND NOT EXISTS (SELECT 1 FROM Contact WHERE CONTACT_NUMBER = ?);`,
+    [phone, jid, phone],
+  );
 }
 
 export async function setArchived(jid: string, archived: boolean): Promise<void> {

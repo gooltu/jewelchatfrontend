@@ -27,6 +27,8 @@ export interface Contact {
   IS_ARCHIVED: number;
   IS_PINNED: number;
   PINNED_TIME: number | null;
+  /** 1 once the user chose Continue/Add on the unknown-sender prompt (migration 007). */
+  IS_UNKNOWN_ACCEPTED: number;
 }
 
 /** A `Contact` row rendered as a chat-list entry — same shape, different lens. */

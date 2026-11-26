@@ -7,6 +7,7 @@ import { messageTestID } from '@components/shared/testIDs';
 import { useConversations } from '@hooks/useConversations';
 import type { RootScreenProps } from '@navigation/types';
 import type { ChatMessage } from '@app-types/chat';
+import { conversationDisplayName } from '../../../utils/contactDisplay';
 
 /**
  * Every starred message across every conversation, newest first. Tapping a
@@ -28,7 +29,7 @@ export function StarredMessagesScreen({ navigation }: RootScreenProps<'StarredMe
     const contact = conversations.find((c) => c.JID === message.CHAT_ROOM_JID);
     navigation.navigate('ChatDetail', {
       chatRoomJid: message.CHAT_ROOM_JID,
-      title: contact?.CONTACT_NAME ?? contact?.PHONEBOOK_CONTACT_NAME ?? 'Unknown User',
+      title: conversationDisplayName(contact),
       isGroup: contact?.IS_GROUP === 1,
     });
   };
@@ -52,7 +53,7 @@ export function StarredMessagesScreen({ navigation }: RootScreenProps<'StarredMe
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => {
           const contact = conversations.find((c) => c.JID === item.CHAT_ROOM_JID);
-          const roomName = contact?.CONTACT_NAME ?? contact?.PHONEBOOK_CONTACT_NAME ?? 'Unknown User';
+          const roomName = conversationDisplayName(contact);
           return (
             <Pressable
               testID={messageTestID(item, 'starred')}

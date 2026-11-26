@@ -34,6 +34,7 @@ access to the database, the chat server, and the game server — screens never i
 | Remote push registration (XEP-0357 enable/disable with the FCM token), notification channel, per-thread dismiss | `services/pushService.ts` (stanzas: `chatserver/push.ts`), called only from `chatService` (on every `connected`, on logout, and in `setActiveConversation`) |
 | Notification presentation and tap-to-open routing | `notifications/pushNotifications.ts` (`useNotificationDeepLinking`, mounted in `App.tsx`) |
 | Accepted in-app disclosures (contacts prominent disclosure), persisted | `store/slices/consentSlice.ts`, written by `contactSyncService.ensureContactsDisclosureAccepted` |
+| Unknown-sender prompt answers (continue / block / add to contacts), device-side blocking | `services/unknownSenderService.ts` (+ `Contact.IS_UNKNOWN_ACCEPTED`/`IS_BLOCKED`); UI `components/shared/UnknownSenderPrompt.tsx` |
 | Privacy policy / terms / account-deletion URLs | `app.config.ts` `extra` → `config/env.ts` → `utils/legalLinks.ts` (pages served by ServerProjextX) |
 
 ## Media attachments (photo / video / voice note)
@@ -121,6 +122,29 @@ pre-existing `typing` one exactly) — never persisted, never written to SQLite.
 header subtitle shows it for 1:1 threads only (group presence isn't a single-person concept),
 with the typing indicator taking priority when both are true:
 `isPeerTyping ? 'typing…' : presence?.isOnline ? 'Online' : lastSeen-formatted string`.
+
+## Unknown senders & blocking
+
+A 1:1 chat from someone not in the phonebook (no `CONTACT_NAME`/`PHONEBOOK_CONTACT_NAME`; never a
+group or the Team Jewel Chat welcome contact) is resolved by `chatService.resolveUnknownSender`
+from both `ChatListScreen` and `ChatDetailScreen`, since push deep links skip the list. It looks the
+JID's userId up via `/downloadContact`. A stranger's number goes onto the JID row with
+`contactRepository.setContactNumberIfUnset`, which is UNIQUE-safe. The re-upsert keeps the row's
+existing `IS_BLOCKED` and names. Until the user answers, `ChatDetailScreen` shows
+`UnknownSenderPrompt` in place of the composer: avatar, formatted number ("+91 90000 00004"), and
+Add to contacts / Block / Continue. Titles fall back name → phonebook name → number → "Unknown
+User" (`utils/contactDisplay.ts`).
+
+- **Continue** sets `IS_UNKNOWN_ACCEPTED` (migration 007).
+- **Add to contacts** opens the OS create-contact form with the number pre-filled
+  (`expo-contacts` `Contact.presentCreateForm`, so no `WRITE_CONTACTS`). It then re-runs
+  `syncPhonebook` and roster-subscribes once the row has a phonebook name.
+- **Block** is device-side only, because the server has no `mod_blocking`/`mod_privacy`. The
+  server still delivers stanzas and the peer is never told. `stropheEvents.handleMessageStanza`
+  drops all of a blocked JID's 1:1 stanzas (messages, reactions, receipts, chat states) before
+  storing or receipting. `chatService.persistArchivedMessage` skips its MAM-backfilled messages.
+  A blocked chat shows `BlockedBanner` (Unblock) instead of the composer. Messages stored before
+  the block stay.
 
 ## Message actions & conversation management
 
@@ -275,7 +299,8 @@ App-side convention is `<screen>.<element>[.<record>]`, dot-separated kebab-case
   `chat-detail.message.<SENDER_MSG_ID>` (+ `.row`, `.jewel`, `.forwarded`, `.reactions`,
   `.reaction.<i>`, `.failed`, `.media-spinner`), action sheets `message-actions.*` /
   `conversation-actions.*` (toggle rows are named by what they'll do: `.star`/`.unstar`,
-  `.pin`/`.unpin`, `.archive`/`.unarchive`).
+  `.pin`/`.unpin`, `.archive`/`.unarchive`), the unknown-sender prompt `unknown-sender` (`.phone`,
+  `.add`, `.block`, `.continue`) and `blocked-banner.unblock`.
 - Lists: `chat-list.row.<jid-node>`, `archived-chats.row.…`, `forward-message.row.…`,
   `select-contact.row.<phone-digits>`, `select-members.row.<phone-digits>`, `starred.message.…`.
 - Settings: `settings.privacy-policy`, `settings.terms`, `settings.delete-account`. Phone entry legal line: `phone-entry.legal`.
@@ -297,7 +322,7 @@ it is never stored as its own column. `schema.ts`'s `CREATE_CHAT_MESSAGE_TABLE` 
 original v1 DDL text — several real columns (e.g. `MEDIA_WIDTH`, `IS_STARRED`, `JEWEL_CODE`) exist
 solely via later migrations and are never backfilled into that base DDL string; the true current
 schema is base DDL + every migration applied in order, not `schema.ts` alone. Latest migration:
-`006_jewel_code.ts` (adds `ChatMessage.JEWEL_CODE`, see the Jewels section above).
+`007_unknown_sender.ts` (adds `Contact.IS_UNKNOWN_ACCEPTED`, see "Unknown senders & blocking").
 
 ## Conventions
 

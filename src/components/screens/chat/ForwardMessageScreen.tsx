@@ -18,6 +18,7 @@ import { conversationRowTestID } from '@components/shared/testIDs';
 import { useConversations } from '@hooks/useConversations';
 import * as chatService from '@services/chatService';
 import type { RootScreenProps, AppStackOptions } from '@navigation/types';
+import { conversationDisplayName } from '../../../utils/contactDisplay';
 
 /** Pushed from MessageActionSheet's "Forward" action. Multi-select target picker — reuses the same conversation list ChatListScreen renders, so groups are selectable too. */
 export function ForwardMessageScreen({ navigation, route }: RootScreenProps<'ForwardMessage'>) {
@@ -88,7 +89,7 @@ export function ForwardMessageScreen({ navigation, route }: RootScreenProps<'For
             if (!item.JID) return null;
             const jid = item.JID;
             const isSelected = selected.has(jid);
-            const name = item.CONTACT_NAME ?? item.PHONEBOOK_CONTACT_NAME ?? 'Unknown User';
+            const name = conversationDisplayName(item);
             const rowTestID = conversationRowTestID('forward-message', item);
             return (
               <Pressable

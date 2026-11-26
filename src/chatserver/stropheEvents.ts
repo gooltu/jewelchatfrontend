@@ -28,6 +28,7 @@ import {
   getContactByJid,
   upsertContact,
   insertBareContactIfMissing,
+  isBlockedJid,
   updateGroupName,
   updateGroupAdminFlag,
   deleteContact,
@@ -192,6 +193,12 @@ async function handleMessageStanza(
     }
   }
 
+  // Device-side block (services/unknownSenderService.ts): drop everything a
+  // blocked 1:1 peer sends (messages, reactions, receipts, chat states)
+  // before it is stored or receipted. The server has no blocking module, so
+  // it still delivers them and the sender is never told.
+  if (!isGroupMsg && (await isBlockedJid(chatRoomJid))) return;
+
   // 1-1: the author is the peer's bare JID (same as chatRoomJid). Group: the
   // full room@conference.domain/nickname JID identifies the author uniquely.
   const creatorJid = isGroupMsg ? from : chatRoomJid;
@@ -310,7 +317,7 @@ async function handleMessageStanza(
   // but the chat list's Contact-only query never surfaces it. Bare row here
   // (no name/JEWELCHAT_ID yet) is the same "first-seen room" concept already
   // used for a freshly-discovered group (see the #affiliations handler
-  // below) — the list then displays it as "Unknown User" (ChatListScreen's
+  // below) — the list then displays it as "Unknown User" (utils/contactDisplay.ts
   // name fallback) until chatService.resolveUnknownSender fills it in.
   // insertBareContactIfMissing is a single `ON CONFLICT DO NOTHING` INSERT,
   // not a read-first check — one round trip, and structurally incapable of

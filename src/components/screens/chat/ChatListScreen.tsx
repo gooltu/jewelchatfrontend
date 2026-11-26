@@ -31,8 +31,8 @@ import { presenceSelectors } from '@store/slices/chatSlice';
 import * as chatService from '@services/chatService';
 import type { ChatScreenProps, AppStackOptions } from '@navigation/types';
 import type { Conversation } from '@app-types/chat';
+import { conversationDisplayName } from '../../../utils/contactDisplay';
 
-const UNKNOWN_SENDER_LABEL = 'Unknown User';
 
 type ListRow = { kind: 'divider'; label: string } | { kind: 'conversation'; conversation: Conversation };
 
@@ -103,7 +103,7 @@ export function ChatListScreen({ navigation }: ChatScreenProps<'ChatList'>) {
     }
     navigation.navigate('ChatDetail', {
       chatRoomJid: conversation.JID,
-      title: conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? UNKNOWN_SENDER_LABEL,
+      title: conversationDisplayName(conversation),
       isGroup: conversation.IS_GROUP === 1,
     });
   };
@@ -268,7 +268,7 @@ export function ChatListRow({
     <Pressable testID={subTestID(testID, 'pressable')} onLongPress={onLongPress} delayLongPress={350}>
       <ChatListItem
         testID={testID}
-        name={conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? UNKNOWN_SENDER_LABEL}
+        name={conversationDisplayName(conversation)}
         snippet={conversation.MSG_TEXT ?? ''}
         timestamp={formatTimestamp(conversation.LAST_MSG_CREATED_TIME)}
         avatarSource={avatarSource}

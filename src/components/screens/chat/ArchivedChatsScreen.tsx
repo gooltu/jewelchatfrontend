@@ -8,6 +8,7 @@ import { ChatListRow } from './ChatListScreen';
 import { conversationRowTestID } from '@components/shared/testIDs';
 import type { RootScreenProps } from '@navigation/types';
 import type { Conversation } from '@app-types/chat';
+import { conversationDisplayName } from '../../../utils/contactDisplay';
 
 /**
  * Archived conversations — reachable from ChatListScreen's "Archived (N)"
@@ -27,7 +28,7 @@ export function ArchivedChatsScreen({ navigation }: RootScreenProps<'ArchivedCha
     if (!conversation.JID) return;
     navigation.navigate('ChatDetail', {
       chatRoomJid: conversation.JID,
-      title: conversation.CONTACT_NAME ?? conversation.PHONEBOOK_CONTACT_NAME ?? 'Unknown User',
+      title: conversationDisplayName(conversation),
       isGroup: conversation.IS_GROUP === 1,
     });
   };
