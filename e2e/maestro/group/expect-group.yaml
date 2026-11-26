@@ -1,0 +1,11 @@
+# Group suite step: the chat list shows group ${GROUP} (e.g. after a rename).
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/to-chat-list.yaml
+- runFlow: ../subflows/dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "chat-list\\.row\\..*"
+      text: ".*${GROUP}.*"
+    timeout: 45000

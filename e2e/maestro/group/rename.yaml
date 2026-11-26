@@ -1,0 +1,18 @@
+# Group suite step: in the open group chat (as owner), rename it to ${NAME}.
+appId: net.jewelchat.app
+---
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "chat-detail.header.identity"
+- tapOn:
+    id: "group-info.rename"
+- eraseText: 80
+- inputText: ${NAME}
+- tapOn:
+    id: "group-info.rename-save"
+- extendedWaitUntil:
+    notVisible:
+      id: "group-info.error"
+    timeout: 5000
+- tapOn:
+    id: "group-info.header.back"

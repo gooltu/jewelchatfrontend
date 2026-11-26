@@ -1,11 +1,14 @@
-import { getApp } from '@react-native-firebase/app';
-import {
-  initializeAppCheck,
-  getToken,
-  ReactNativeFirebaseAppCheckProvider,
-  type AppCheck,
-} from '@react-native-firebase/app-check';
+import { TurboModuleRegistry } from 'react-native';
+import type { AppCheck } from '@react-native-firebase/app-check';
 import { setAppCheckTokenProvider } from '../gameserver/client';
+
+// Required lazily, inside configureAppCheck's try: in a build without the
+// Firebase native modules (JC_NO_FIREBASE=1, see app.config.ts), merely
+// importing these packages throws "Native module NativeRNFBTurboApp is not
+// registered" at module load, which would take the whole app down with it.
+type FirebaseAppModule = typeof import('@react-native-firebase/app');
+type FirebaseAppCheckModule = typeof import('@react-native-firebase/app-check');
+let appCheckModule: FirebaseAppCheckModule | null = null;
 
 /**
  * Firebase App Check for the three endpoints gated behind it server-side
@@ -31,8 +34,21 @@ let appCheckInstance: AppCheck | null = null;
  */
 export function configureAppCheck(): void {
   if (appCheckInstance) return;
+  // Checked first, not just caught: in dev, Metro reports a module that throws
+  // while loading to LogBox as an uncaught error even when the require is
+  // inside a try, and that full-screen error covers the app.
+  if (!TurboModuleRegistry.get('NativeRNFBTurboApp')) {
+    if (__DEV__) console.log('[appCheck] Firebase native module not in this build; App Check off');
+    return;
+  }
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getApp } = require('@react-native-firebase/app') as FirebaseAppModule;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const appCheck = require('@react-native-firebase/app-check') as FirebaseAppCheckModule;
+    const { initializeAppCheck, ReactNativeFirebaseAppCheckProvider } = appCheck;
+    appCheckModule = appCheck;
     const provider = new ReactNativeFirebaseAppCheckProvider();
     provider.configure({
       android: { provider: __DEV__ ? 'debug' : 'playIntegrity' },
@@ -57,9 +73,9 @@ export function configureAppCheck(): void {
  * not this function.
  */
 async function getAppCheckToken(): Promise<string | null> {
-  if (!appCheckInstance) return null;
+  if (!appCheckInstance || !appCheckModule) return null;
   try {
-    const { token } = await getToken(appCheckInstance);
+    const { token } = await appCheckModule.getToken(appCheckInstance);
     // The raw debug token to register in the Firebase console (App Check > this app
     // > Manage debug tokens) is printed by the native SDK itself to the
     // Xcode/Logcat console on first run with provider 'debug' — not this JWT, which

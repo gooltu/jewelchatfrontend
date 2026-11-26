@@ -39,7 +39,8 @@ export function CreateGroupDetailsScreen({ navigation, route }: RootScreenProps<
       });
       navigation.popToTop();
       navigation.navigate('ChatDetail', { chatRoomJid: roomJid, title: trimmed, isGroup: true });
-    } catch {
+    } catch (err) {
+      if (__DEV__) console.log('[createGroup] failed', err);
       setError('Could not create the group. Check your connection and try again.');
       setSubmitting(false);
     }

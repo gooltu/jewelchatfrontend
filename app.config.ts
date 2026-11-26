@@ -33,7 +33,13 @@ const LEGAL_BASE_URL = 'https://game.jewelchat.net';
 const ANDROID_GOOGLE_SERVICES = './google-services.json';
 const IOS_GOOGLE_SERVICES = './GoogleService-Info.plist';
 const hasAndroidGoogleServices = existsSync(ANDROID_GOOGLE_SERVICES);
-const hasIosGoogleServices = existsSync(IOS_GOOGLE_SERVICES);
+// JC_NO_FIREBASE=1 (development only) builds without the two Firebase native
+// modules, e.g. an iOS simulator build before GoogleService-Info.plist exists.
+// react-native.config.js reads the same flag to keep them out of autolinking.
+// App Check then just never attaches a header (fine while the server leaves
+// APP_CHECK_ENABLED off); push still needs FCM and won't work on such a build.
+const NO_FIREBASE = APP_ENV === 'development' && process.env.JC_NO_FIREBASE === '1';
+const hasIosGoogleServices = !NO_FIREBASE && existsSync(IOS_GOOGLE_SERVICES);
 
 // Bump for every Play upload (Play rejects a reused versionCode).
 const ANDROID_VERSION_CODE = 1;
@@ -99,8 +105,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // once the server sets APP_CHECK_ENABLED, see appCheckService.ts and
     // gameserver/client.ts). After changing anything here, run
     // `expo prebuild --clean`.
-    '@react-native-firebase/app',
-    '@react-native-firebase/app-check',
+    ...(NO_FIREBASE ? [] : ['@react-native-firebase/app', '@react-native-firebase/app-check']),
     'expo-font',
     'expo-asset',
     'expo-sqlite',
@@ -147,6 +152,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Real release signing config for local `./gradlew bundleRelease`. See
     // the plugin's header comment and docs/play-store-release.md.
     './plugins/withReleaseSigning',
+    // iOS 27 refuses to launch apps without the UIScene lifecycle; Expo 57's
+    // template doesn't adopt it yet. See the plugin's header comment.
+    './plugins/withIosSceneLifecycle',
   ],
   extra: {
     appEnv: APP_ENV,

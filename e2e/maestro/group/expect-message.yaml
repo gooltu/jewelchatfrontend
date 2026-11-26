@@ -1,0 +1,13 @@
+# Group suite step: in the open chat, ${TEXT} arrives, and the group's sender
+# label ${SENDER} is shown on an incoming bubble.
+appId: net.jewelchat.app
+---
+- runFlow: ../subflows/dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail\\.message\\..*\\.text"
+      text: ${TEXT}
+    timeout: 30000
+- assertVisible:
+    id: "chat-detail\\.message\\..*\\.sender"
+    text: ".*${SENDER}.*"

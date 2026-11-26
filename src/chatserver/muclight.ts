@@ -217,12 +217,44 @@ export function destroyGroupRoom(roomJid: string): Promise<void> {
   });
 }
 
-/** `disco#items` to the MUC domain — every room this account currently occupies. */
-export function fetchGroupRooms(): Promise<{ jid: string; name: string | null }[]> {
+/** `disco#items` to the MUC domain — every room this account currently occupies.
+ * The server pages the answer (XEP-0059 RSM, 10 rooms a page here), so this
+ * follows `<last>` until a page comes back short; reading only the first page
+ * meant a member who was offline when a group was created never discovered it
+ * once they were in more than 10 rooms. */
+export async function fetchGroupRooms(): Promise<{ jid: string; name: string | null }[]> {
+  const rooms: { jid: string; name: string | null }[] = [];
+  const seen = new Set<string>();
+  let after: string | null = null;
+  for (let page = 0; page < MAX_ROOM_PAGES; page += 1) {
+    const result = await fetchGroupRoomsPage(after);
+    let added = 0;
+    for (const room of result.items) {
+      if (seen.has(room.jid)) continue;
+      seen.add(room.jid);
+      rooms.push(room);
+      added += 1;
+    }
+    const total = result.count ?? rooms.length;
+    if (!result.last || added === 0 || rooms.length >= total) break;
+    after = result.last;
+  }
+  return rooms;
+}
+
+const RSM_NS = 'http://jabber.org/protocol/rsm';
+const MAX_ROOM_PAGES = 50; // backstop against a server that never stops paging
+
+function fetchGroupRoomsPage(after: string | null): Promise<{
+  items: { jid: string; name: string | null }[];
+  last: string | null;
+  count: number | null;
+}> {
   const connection = requireConnection();
   const mucDomain = getMucDomain(connection);
   return new Promise((resolve, reject) => {
-    const iq = $iq({ type: 'get', to: mucDomain }).c('query', { xmlns: DISCO_ITEMS_NS });
+    let iq = $iq({ type: 'get', to: mucDomain }).c('query', { xmlns: DISCO_ITEMS_NS });
+    if (after) iq = iq.c('set', { xmlns: RSM_NS }).c('after', {}, after);
     connection.sendIQ(
       iq,
       (stanza) => {
@@ -232,7 +264,15 @@ export function fetchGroupRooms(): Promise<{ jid: string; name: string | null }[
           const jid = nodes[i]?.getAttribute('jid');
           if (jid) items.push({ jid, name: nodes[i]?.getAttribute('name') ?? null });
         }
-        resolve(items);
+        const setEl = firstChildByTagNameNs(
+          firstChildByTagNameNs(stanza, 'query', DISCO_ITEMS_NS) ?? stanza,
+          'set',
+          RSM_NS,
+        );
+        const last = setEl ? firstChildByTagName(setEl, 'last')?.textContent ?? null : null;
+        const countText = setEl ? firstChildByTagName(setEl, 'count')?.textContent ?? null : null;
+        const count = countText !== null && countText !== '' ? Number(countText) : null;
+        resolve({ items, last, count: Number.isFinite(count) ? count : null });
       },
       () => reject(new Error('fetchGroupRooms: disco#items failed or timed out')),
       QUERY_TIMEOUT_MS,

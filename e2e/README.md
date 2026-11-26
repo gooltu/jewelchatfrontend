@@ -155,10 +155,102 @@ Not fixed:
   with the testID and an `accessibilityLabel` for each state.
 - The device never sends typing indicators (`ChatInputBar` has no keystroke
   callback), so there's no device→bot typing flow.
-- Groups (MUC-Light) aren't covered yet. The bot would need room
-  create/join support.
+- Groups (MUC-Light) aren't covered by the bot suite (the bot has no room
+  support). The separate three-device group suite below covers them.
+- Group reactions: the app can't send reactions and the bots can't join rooms,
+  so nothing exercises reactions in a group yet.
 - Dev builds show React Native's LogBox (the warning toast and the full-screen
   error log), which can cover the UI. `subflows/dismiss-logbox.yaml` clears it,
   but a release build would avoid it entirely.
 - Tests hit the real servers (`game.jewelchat.net` / `chat.jewelchat.net`)
   unless `E2E_GAMESERVER`/`E2E_CHATSERVER` are set.
+
+## Group suite (3 devices)
+
+`npm run e2e:group` (`scripts/run-group-e2e.sh`) runs the real app on three
+devices at once, with no bots: an Android emulator (`emu`, the group owner),
+an iOS simulator (`ios`) and a physical Android phone (`pixel`). The script
+runs small step flows from `maestro/group/` on one device at a time, in a fixed
+order, so the cross-device order is explicit. Messages and the group name carry
+a per-run id; on the other devices, bubbles and chat-list rows are found by that
+text, because their testIDs hold ids those devices can't know in advance
+(the server's room id, the sender's `SENDER_MSG_ID`).
+
+Setup:
+
+1. `E2E_GROUP_PHONES=emu:…,ios:…,pixel:…` in `e2e/.env.local` (three test
+   numbers). Devices are auto-detected: the `emulator-*` serial, the other adb
+   serial, and the booted simulator. Override with `E2E_GROUP_DEVICES`.
+2. Android: install a debug build on both devices (`cd android && ./gradlew
+   assembleDebug`, then `adb -s <serial> install -r app/build/outputs/apk/debug/app-debug.apk`).
+3. iOS: there is no `GoogleService-Info.plist` yet, so build without Firebase:
+   `JC_NO_FIREBASE=1 npx expo prebuild -p ios --clean`, then
+   `JC_NO_FIREBASE=1 npx expo run:ios --device "<simulator>" --no-bundler`. Run
+   both with `LANG=en_US.UTF-8`, because CocoaPods crashes on a non-UTF-8 locale.
+4. One Metro on :8081 (`npx expo start`) serves all three. The script runs
+   `adb reverse` for both Android devices.
+
+Steps: login on all three → the owner resolves the two members in Select
+Contact (the member picker only lists contacts that have already been tapped,
+see `useSelectableContacts.isActive`) → create group → each device sends, and the
+other two see it with a sender label → iOS replies to the phone's message, and
+the quote shows on the other two → the phone goes into airplane mode while two
+messages arrive, then catches up → the owner renames the group, and the others
+see the new name → the phone leaves, and the owner sees 2 members.
+
+The script seeds the emulator's phonebook (`seed-contacts.sh`) and the
+simulator's (`simctl addmedia` with a vCard). It doesn't seed the physical phone:
+its default contacts account is the owner's Google account, so test contacts
+would sync into their real address book. The phone only joins groups, so it
+doesn't need contacts, and its sender labels come from the game server instead
+(`E2E_GROUP_PIXEL_SENDER`, default "any non-empty").
+
+Logs and Maestro output for each step: `e2e/.out/group/<nn>-<device>-<step>.log`
+and the matching directory. `SKIP_LOGIN=1` reuses logged-in devices.
+
+### App findings from the group suite
+
+Fixed:
+
+- **Creating a group failed** with "Couldn't create group", even though the
+  server had created the room. The room-created stanza is also stored by
+  `stropheEvents` (`upsertGroupMember`), and expo-sqlite's
+  `withTransactionAsync` isn't exclusive, so that write could land between
+  `replaceGroupMembers`' DELETE and its INSERT, which then failed the
+  `(GROUP_JID, MEMBER_JID)` unique constraint. The INSERT is now an upsert.
+- **Group messages from other members were silently dropped** when their id
+  matched one of this device's own message ids in the same room. The group
+  echo check matched on the id alone, and message ids are per-device SQLite
+  `_ID`s, so collisions are common. It now also requires the occupant to be us.
+- **Group sender labels showed a raw JID** (`<room>@muclight…/5@…`).
+  `identityService` read the room id as the user id. It now uses the member
+  JID in the resource.
+- **Reply quotes were lost in groups** on the device that wrote the quoted
+  message, and on everyone else's device when someone quoted themselves.
+  Senders and receivers store group messages under different creator forms
+  (bare JID vs. occupant JID). The receiver now normalises the creator to its
+  own form.
+- **Room discovery read only the first page** of `disco#items` (the server
+  pages at 10). A member who missed a live invite never found the group, and
+  the reconcile step *deleted* every local group past the first page on each
+  reconnect. `fetchGroupRooms` now follows RSM paging.
+- **Messages sent during a foreground network drop were never fetched**
+  (catch-up only ran from the last *background* time). A reconnect after an
+  unexpected drop now runs the MAM catch-up from the drop.
+- **After a background/foreground cycle, rooms joined while away got no
+  history**: the catch-up ran before room discovery. Discovery now runs first.
+
+Not fixed:
+
+- **A newly invited group is hidden until someone writes in it.** The chat
+  list only shows conversations with a last message
+  (`LAST_MSG_CREATED_TIME IS NOT NULL`), so there's no "you were added" entry.
+  The suite has the owner post first.
+- **Opening Group Info runs a phonebook sync**, so it shows the contacts
+  disclosure (`useSelectableContacts` is used for member names).
+- **Intermittent uncaught expo-sqlite error** in dev builds: `prepareAsync`
+  "Cannot use shared object that was already released" (seen on both Android
+  devices, as a LogBox). Probably concurrent statements on the shared
+  connection. The step flows dismiss LogBox.
+- **iOS 27 needs the UIScene lifecycle.** Expo 57's template doesn't adopt
+  it, so `plugins/withIosSceneLifecycle.js` adds it.

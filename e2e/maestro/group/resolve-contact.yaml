@@ -1,0 +1,29 @@
+# Group suite step: tap phonebook contact ${PHONE} (digits incl. country code)
+# in Select Contact once. The group member picker only lists contacts already
+# resolved as JewelChat users (useSelectableContacts.isActive), and resolving
+# is lazy, per tap (contactSyncService.resolveContactOnTap).
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/to-chat-list.yaml
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "chat-list.new-message"
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      visible: "Find friends on Jewel Chat"
+    commands:
+      - tapOn: "Continue"
+- extendedWaitUntil:
+    visible:
+      id: "select-contact.row.${PHONE}"
+    timeout: 20000
+- tapOn:
+    id: "select-contact.row.${PHONE}"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.composer.input"
+    timeout: 20000
+- runFlow: ../subflows/to-chat-list.yaml

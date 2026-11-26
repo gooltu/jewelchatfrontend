@@ -1,0 +1,4 @@
+# Group suite step: fresh install -> logged in as ${DEVICE_PHONE}.
+appId: net.jewelchat.app
+---
+- runFlow: ../subflows/login.yaml

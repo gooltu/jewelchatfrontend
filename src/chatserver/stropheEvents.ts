@@ -234,7 +234,12 @@ async function handleMessageStanza(
   // our own outgoing row's CREATOR_JID (our bare JID) — so without this
   // check, it would fail the dedup lookup below and insert as a duplicate
   // incoming copy of our own message. Mirrors handleSelfEcho's 1-1 concept.
-  if (isGroupMsg) {
+  // Only when the occupant (the MUC-Light resource, the sender's bare JID) is
+  // us: message ids are per-device SQLite _IDs, so another member's message
+  // routinely carries an id equal to one of ours in the same room, and
+  // matching on the id alone silently dropped it as "our echo".
+  const isOwnGroupEcho = isGroupMsg && senderName?.toLowerCase() === myJid.toLowerCase();
+  if (isOwnGroupEcho) {
     const ownRow = await getMessageBySenderMsgId(chatRoomJid, myJid, senderMsgId);
     if (ownRow) {
       await markSubmitted(ownRow._ID, Date.now());
@@ -281,7 +286,20 @@ async function handleMessageStanza(
   const replyParentCreatorJid = replyElem?.getAttribute('creator') || null;
   let replyParentLocalId: number | null = null;
   if (replyParentSenderMsgId && replyParentCreatorJid) {
-    const parent = await getMessageBySenderMsgId(chatRoomJid, replyParentCreatorJid, replyParentSenderMsgId);
+    // A group message is stored under the occupant JID `room/<member bare
+    // JID>` on every device except its author's, which stored it as an
+    // outgoing row under its own bare JID. The sender puts whichever form
+    // *it* stored in `creator`, so normalise to this device's form: our own
+    // message -> our bare JID; anyone else's -> the occupant JID. Otherwise
+    // the quote is lost on the quoted author's device (they quoted us) or on
+    // everyone else's (the sender quoted themselves).
+    let parentCreatorJid = replyParentCreatorJid;
+    if (isGroupMsg) {
+      const quotedMember = Strophe.getResourceFromJid(replyParentCreatorJid) ?? replyParentCreatorJid;
+      parentCreatorJid =
+        quotedMember.toLowerCase() === myJid.toLowerCase() ? myJid : `${chatRoomJid}/${quotedMember}`;
+    }
+    const parent = await getMessageBySenderMsgId(chatRoomJid, parentCreatorJid, replyParentSenderMsgId);
     replyParentLocalId = parent?._ID ?? null;
   }
 

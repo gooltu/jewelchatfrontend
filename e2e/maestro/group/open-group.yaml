@@ -1,0 +1,20 @@
+# Group suite step: open group ${GROUP} from the chat list (waits for it to
+# arrive). The row's testID is the server-assigned room id, unknown to the
+# test, so the run-unique name is the selector.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/to-chat-list.yaml
+- runFlow: ../subflows/dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "chat-list\\.row\\..*"
+      text: ".*${GROUP}.*"
+    timeout: 45000
+- tapOn:
+    id: "chat-list\\.row\\..*"
+    text: ".*${GROUP}.*"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.composer.input"
+    timeout: 15000

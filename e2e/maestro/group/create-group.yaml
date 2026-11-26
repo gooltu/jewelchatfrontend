@@ -1,0 +1,35 @@
+# Group suite step: create group ${GROUP} with members ${M1} and ${M2}
+# (phone digits incl. country code); ends in the new group's chat.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/to-chat-list.yaml
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "chat-list.new-message"
+- tapOn:
+    id: "select-contact.create-group"
+- extendedWaitUntil:
+    visible:
+      id: "select-members.row.${M1}"
+    timeout: 20000
+- tapOn:
+    id: "select-members.row.${M1}"
+- tapOn:
+    id: "select-members.row.${M2}"
+- assertVisible:
+    id: "select-members.row.${M2}.selected"
+- tapOn:
+    id: "select-group-members.header.action.next"
+- tapOn:
+    id: "create-group.name"
+- inputText: ${GROUP}
+- tapOn:
+    id: "create-group.create"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.composer.input"
+    timeout: 20000
+- assertVisible:
+    id: "chat-detail.header.title"
+    text: ${GROUP}

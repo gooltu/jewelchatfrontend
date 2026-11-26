@@ -1,0 +1,28 @@
+# Group suite step: in the open chat, long-press ${QUOTE} and reply ${TEXT}.
+appId: net.jewelchat.app
+---
+- runFlow: ../subflows/dismiss-logbox.yaml
+- repeat:
+    while:
+      notVisible:
+        id: "message-actions.reply"
+    times: 3
+    commands:
+      - longPressOn:
+          id: "chat-detail\\.message\\..*\\.text"
+          text: ${QUOTE}
+      - waitForAnimationToEnd:
+          timeout: 2000
+- tapOn:
+    id: "message-actions.reply"
+- assertVisible:
+    id: "chat-detail.composer.reply"
+- tapOn:
+    id: "chat-detail.composer.input"
+- inputText: ${TEXT}
+- tapOn:
+    id: "chat-detail.composer.send"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail\\.message\\..*\\.quote"
+    timeout: 10000

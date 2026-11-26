@@ -76,6 +76,7 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "e2e": "e2e/scripts/run-e2e.sh",
+    "e2e:group": "e2e/scripts/run-group-e2e.sh",
     "e2e:bot": "node e2e/bot/server.mjs"
   },
   "private": true

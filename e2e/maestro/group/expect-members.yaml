@@ -1,0 +1,23 @@
+# Group suite step: in the open group chat, Group Info shows ${COUNT} members.
+appId: net.jewelchat.app
+---
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "chat-detail.header.identity"
+# Group Info loads the contact picker list, which runs a phonebook sync and
+# so shows the contacts disclosure on a device that hasn't answered it yet.
+# "Not now" keeps a real phone's address book out of the app.
+- waitForAnimationToEnd:
+    timeout: 2000
+- runFlow:
+    when:
+      visible: "Find friends on Jewel Chat"
+    commands:
+      - tapOn: "(?i)not now"
+- extendedWaitUntil:
+    visible:
+      id: "group-info.member-count"
+      text: "${COUNT} members"
+    timeout: 30000
+- tapOn:
+    id: "group-info.header.back"

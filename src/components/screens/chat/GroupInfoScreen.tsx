@@ -14,6 +14,7 @@ import {
   Toast,
 } from '@components/design-system';
 import { ContactAvatar } from '@components/shared/ContactAvatar';
+import { groupMemberTestID } from '@components/shared/testIDs';
 import { useGroupMembers } from '@hooks/useGroupMembers';
 import { useSelectableContacts } from '@hooks/useSelectableContacts';
 import { useAppSelector } from '@store/hooks';
@@ -134,16 +135,17 @@ export function GroupInfoScreen({ navigation, route }: RootScreenProps<'GroupInf
     const isSelf = jid === myJid;
     const name = isSelf ? 'myself' : nameByJid.get(jid) ?? resolvedNames.get(jid) ?? jid;
     const isMemberOwner = item.AFFILIATION === 'owner';
+    const rowTestID = groupMemberTestID(item.MEMBER_JID, item._ID);
 
     return (
-      <View style={styles.memberRow}>
+      <View testID={rowTestID} style={styles.memberRow}>
         <ContactAvatar jid={jid} name={name} />
         <View style={styles.memberBody}>
-          <Text style={[typography.headlineMd, styles.memberName]} numberOfLines={1}>
+          <Text testID={`${rowTestID}.name`} style={[typography.headlineMd, styles.memberName]} numberOfLines={1}>
             {name}
           </Text>
           {isMemberOwner && (
-            <View style={styles.ownerBadge}>
+            <View testID={`${rowTestID}.owner`} style={styles.ownerBadge}>
               <Crown size={12} color={styles.ownerBadgeText.color} />
               <Text style={styles.ownerBadgeText}>Owner</Text>
             </View>
@@ -152,11 +154,12 @@ export function GroupInfoScreen({ navigation, route }: RootScreenProps<'GroupInf
         {isOwner && !isSelf && (
           <View style={styles.memberActions}>
             <IconButton
+              testID={`${rowTestID}.${isMemberOwner ? 'demote' : 'promote'}`}
               icon={isMemberOwner ? ShieldMinus : ShieldPlus}
               onPress={() => (isMemberOwner ? handleDemote(jid) : handlePromote(jid))}
               disabled={busy}
             />
-            <IconButton icon={UserMinus} onPress={() => handleRemove(jid)} disabled={busy} />
+            <IconButton testID={`${rowTestID}.remove`} icon={UserMinus} onPress={() => handleRemove(jid)} disabled={busy} />
           </View>
         )}
       </View>
@@ -170,20 +173,21 @@ export function GroupInfoScreen({ navigation, route }: RootScreenProps<'GroupInf
         {isOwner ? (
           <View style={styles.renameRow}>
             <View style={styles.renameInput}>
-              <InputField value={nameDraft} onChangeText={setNameDraft} />
+              <InputField testID="group-info.rename" value={nameDraft} onChangeText={setNameDraft} />
             </View>
-            <ButtonPrimary label="Save" onPress={handleRename} disabled={busy || !nameDraft.trim() || nameDraft.trim() === roomName} />
+            <ButtonPrimary testID="group-info.rename-save" label="Save" onPress={handleRename} disabled={busy || !nameDraft.trim() || nameDraft.trim() === roomName} />
           </View>
         ) : (
-          <Text style={[typography.headlineMd, styles.roomName]}>{roomName}</Text>
+          <Text testID="group-info.name" style={[typography.headlineMd, styles.roomName]}>{roomName}</Text>
         )}
       </View>
 
       <View style={styles.section}>
         <View style={styles.membersHeader}>
-          <Text style={styles.sectionTitle}>{members.length} member{members.length === 1 ? '' : 's'}</Text>
+          <Text testID="group-info.member-count" style={styles.sectionTitle}>{members.length} member{members.length === 1 ? '' : 's'}</Text>
           {isOwner && (
             <IconButton
+              testID="group-info.add-members"
               icon={UserPlus}
               onPress={() => navigation.navigate('SelectGroupMembers', { mode: 'add', existingGroupJid: chatRoomJid })}
             />
@@ -199,13 +203,13 @@ export function GroupInfoScreen({ navigation, route }: RootScreenProps<'GroupInf
       />
 
       <View style={styles.footer}>
-        <ButtonGhost label="Leave group" onPress={handleLeave} disabled={busy} />
-        {isOwner && <ButtonGhost label="Delete group" onPress={handleDestroy} disabled={busy} />}
+        <ButtonGhost testID="group-info.leave" label="Leave group" onPress={handleLeave} disabled={busy} />
+        {isOwner && <ButtonGhost testID="group-info.delete" label="Delete group" onPress={handleDestroy} disabled={busy} />}
       </View>
 
       {error ? (
         <View style={styles.toastWrap}>
-          <Toast variant="error" title="Something went wrong" description={error} persist />
+          <Toast testID="group-info.error" variant="error" title="Something went wrong" description={error} persist />
         </View>
       ) : null}
     </SafeAreaView>

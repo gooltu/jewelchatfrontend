@@ -42,6 +42,12 @@ export function contactRowTestID(
   return `${screen}.row.${digits || `local-${contact._ID}`}`;
 }
 
+/** `group-info.member.<userId>` — a group member row, keyed by the member
+ * JID's local part (the numeric userId, same on every device). */
+export function groupMemberTestID(memberJid: string | null | undefined, localId: number): string {
+  return `group-info.member.${jidNode(memberJid) ?? `local-${localId}`}`;
+}
+
 function jidNode(jid: string | null | undefined): string | null {
   return jid ? jid.split('@')[0] : null;
 }

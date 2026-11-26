@@ -184,7 +184,11 @@ App Check gates `POST /registerPhoneNumber`, `/verifyCode` and `/getAccessToken`
 
 Firebase project: `jewel-chat-1984`. `google-services.json` is at the repo root and gitignored; `app.config.ts` only references it when the file exists.
 
-There is no iOS app or `GoogleService-Info.plist` yet. `app.config.ts` adds the iOS `googleServicesFile` and the App Attest entitlement only when that file exists, so iOS prebuild is expected to fail until it's added.
+There is no iOS app or `GoogleService-Info.plist` yet. `app.config.ts` adds the iOS `googleServicesFile` and the App Attest entitlement only when that file exists, so a normal iOS prebuild is expected to fail until it's added.
+
+For an iOS simulator build without it, set `JC_NO_FIREBASE=1` (development only) on both `expo prebuild` and `expo run:ios`. It drops the two Firebase plugins, and `react-native.config.js` keeps both packages out of autolinking. App Check then never attaches a header, and push won't work. The E2E group suite uses this (`e2e/README.md`).
+
+iOS 27 won't launch an app that hasn't adopted the UIScene lifecycle, and Expo 57's template hasn't. `plugins/withIosSceneLifecycle.js` adds a scene manifest and a `SceneDelegate` that owns the window.
 
 Providers:
 - **Debug builds:** the debug provider. Register its logged token in Firebase console › App Check › Manage debug tokens.

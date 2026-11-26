@@ -373,19 +373,62 @@ export function connect(jid: string, password: string): void {
   if (!statusUnsubscribe) {
     statusUnsubscribe = onConnectionStatusChange((status) => {
       store.dispatch(connectionStatusChanged(STATUS_MAP[status]));
+      if (status !== 'connected') {
+        if (sessionLive && !intentionalDisconnect) droppedAtMs = Date.now();
+        sessionLive = false;
+        return;
+      }
       if (status === 'connected') {
+        sessionLive = true;
+        intentionalDisconnect = false;
         registerStanzaHandlersForSession(jid);
         broadcastPresence();
         // XEP-0357 enable on every (re)connect. Idempotent (same per-install
         // node id), and it picks up a rotated FCM token. See pushService.ts.
         void pushService.ensurePushRegistered(jid);
         void timeSyncService.syncServerTimeDelta();
-        void syncGroupRooms();
+        const dropStartedAtMs = droppedAtMs;
+        droppedAtMs = null;
+        void syncGroupRooms().then(() =>
+          dropStartedAtMs === null ? undefined : catchUpAfterDrop(dropStartedAtMs),
+        );
         void backfillRosterSubscriptions();
       }
     });
   }
   stropheConnect(jid, password);
+}
+
+/** True between a 'connected' status and the next status change. */
+let sessionLive = false;
+/** Set by disconnect(): a background/logout disconnect isn't a "drop" —
+ * foreground's resyncAfterForeground does that catch-up from the recorded
+ * background time instead. */
+let intentionalDisconnect = false;
+/** App time a live session was lost unexpectedly (network drop, server
+ * closing the stream), until the reconnect's catch-up takes it. */
+let droppedAtMs: number | null = null;
+
+/**
+ * MAM catch-up after an unexpected drop while the app stayed in the
+ * foreground (e.g. a network loss): Strophe reconnects by itself, but nothing
+ * delivered during the gap is ever replayed live (no offline queue, and a
+ * group message only exists in the room's archive), and the regular
+ * catch-up only runs from the last *background* time, in
+ * resyncAfterForeground. Found by the e2e group suite's airplane-mode step:
+ * group messages sent while the phone was offline never showed up.
+ */
+async function catchUpAfterDrop(droppedAtAppMs: number): Promise<void> {
+  try {
+    const deltaChat = await timeSyncService.getChatServerTimeDelta();
+    if (deltaChat === null) return;
+    const reconnectedAtAppMs = Date.now();
+    const startMs = droppedAtAppMs + deltaChat - HISTORY_START_OVERLAP_MS;
+    await downloadHistorySinceBackground(startMs);
+    void scheduleSettledHistoryRecheck(startMs, reconnectedAtAppMs);
+  } catch (error) {
+    if (__DEV__) console.log('[history] catch-up after drop failed:', error);
+  }
 }
 
 /** Broadcasts available presence — called once per successful (re)connect. */
@@ -424,9 +467,14 @@ export async function resyncAfterForeground(jid: string, password: string): Prom
     // since that only fires on an actual status transition to 'connected'.
     await flushPendingMessages();
     void resumePendingMediaUploads();
+    // Rooms first: the catch-up below only queries rooms already known
+    // locally, so a group this account was added to while backgrounded
+    // (its live invite missed) would otherwise never get its messages
+    // fetched, and the chat list hides a group with no messages. Found by
+    // the e2e group suite, with the phone's screen timing out between steps.
+    await syncGroupRooms();
     const historyStartMs = await downloadHistorySinceBackground();
     void scheduleSettledHistoryRecheck(historyStartMs, resyncStartedAtMs);
-    await syncGroupRooms();
   } catch (error) {
     if (__DEV__) {
       console.log('[chatService] resyncAfterForeground failed:', error);
@@ -708,6 +756,8 @@ function connectAndWait(jid: string, password: string, timeoutMs = 15_000): Prom
 }
 
 export function disconnect(): void {
+  intentionalDisconnect = true;
+  droppedAtMs = null;
   stropheDisconnect();
   store.dispatch(connectionStatusChanged('disconnected'));
 }

@@ -43,7 +43,12 @@ export async function removeGroupMember(groupJid: string, memberJid: string): Pr
   ]);
 }
 
-/** Replaces a group's full roster (e.g. after fetching XMPP MUC affiliations). */
+/** Replaces a group's full roster (e.g. after fetching XMPP MUC affiliations).
+ * Upserts rather than plain-inserts: expo-sqlite's withTransactionAsync isn't
+ * exclusive, so stropheEvents' upsertGroupMember for the same affiliations
+ * stanza (e.g. the room-created notification during createGroup) can land
+ * between the DELETE and the INSERTs, and a plain INSERT then fails the
+ * (GROUP_JID, MEMBER_JID) unique constraint — which failed group creation. */
 export async function replaceGroupMembers(
   groupJid: string,
   members: { memberJid: string; affiliation: string | null }[],
@@ -53,7 +58,8 @@ export async function replaceGroupMembers(
     await db.runAsync(`DELETE FROM GroupMembers WHERE GROUP_JID = ?;`, [groupJid]);
     for (const member of members) {
       await db.runAsync(
-        `INSERT INTO GroupMembers (GROUP_JID, MEMBER_JID, AFFILIATION) VALUES (?, ?, ?);`,
+        `INSERT INTO GroupMembers (GROUP_JID, MEMBER_JID, AFFILIATION) VALUES (?, ?, ?)
+         ON CONFLICT (GROUP_JID, MEMBER_JID) DO UPDATE SET AFFILIATION = excluded.AFFILIATION;`,
         [groupJid, member.memberJid, member.affiliation],
       );
     }

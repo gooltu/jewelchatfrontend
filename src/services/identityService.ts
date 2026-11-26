@@ -25,12 +25,24 @@ const inFlight = new Map<string, Promise<string>>();
  * blocking whatever's rendering it.
  */
 export function resolveGroupMemberDisplayName(jid: string): Promise<string> {
+  jid = memberJidOf(jid);
   const existing = inFlight.get(jid);
   if (existing) return existing;
 
   const promise = resolveGroupMemberDisplayNameUncached(jid).finally(() => inFlight.delete(jid));
   inFlight.set(jid, promise);
   return promise;
+}
+
+/**
+ * A group message's CREATOR_JID is the full MUC-Light occupant JID,
+ * `<room>@muclight.<domain>/<member bare JID>` — the member is the resource,
+ * not the node (the node is the room id). Unwrap it so the userid lookup
+ * below sees the member; a bare member JID passes through unchanged.
+ */
+function memberJidOf(jid: string): string {
+  const resource = Strophe.getResourceFromJid(jid);
+  return resource && resource.includes('@') ? resource : jid;
 }
 
 async function resolveGroupMemberDisplayNameUncached(jid: string): Promise<string> {
