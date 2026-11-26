@@ -24,4 +24,9 @@ module.exports = {
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)',
   ],
   setupFiles: ['./jest.setup.js'],
+  // Claude Code session worktrees live under .claude/worktrees/ with their
+  // own copy of the sources (and node_modules), which Jest would otherwise
+  // collect and fail to run.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/.claude/'],
+  modulePathIgnorePatterns: ['<rootDir>/.claude/'],
 };

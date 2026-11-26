@@ -203,6 +203,9 @@ async function handleIncomingSubscriptionRequest(fromJid: string): Promise<void>
     const result = await contactLookupApi.downloadContactById(userId);
     const phone = result ? Number(result.phone) : null;
     const existing = phone !== null && Number.isFinite(phone) ? await getContactByNumber(phone) : null;
+    // The lookups above take a network round trip; the connection may have
+    // dropped meanwhile, and Strophe throws on a send over a closed socket.
+    if (!isConnected()) return;
 
     if (!existing) {
       roster.sendPresenceUnsubscribed(connection, fromJid);
@@ -411,9 +414,9 @@ export function connect(jid: string, password: string): void {
 
 /** True between a 'connected' status and the next status change. */
 let sessionLive = false;
-/** Set by disconnect(): a background/logout disconnect isn't a "drop" —
+/** Set by disconnect(): a background/logout disconnect isn't a new "drop" —
  * foreground's resyncAfterForeground does that catch-up from the recorded
- * background time instead. */
+ * background time instead (an earlier, still-pending drop is kept). */
 let intentionalDisconnect = false;
 /** App time a live session was lost unexpectedly (network drop, server
  * closing the stream), until the reconnect's catch-up takes it. */
@@ -770,7 +773,10 @@ function connectAndWait(jid: string, password: string, timeoutMs = 15_000): Prom
 
 export function disconnect(): void {
   intentionalDisconnect = true;
-  droppedAtMs = null;
+  // A pending drop (droppedAtMs) is kept: if the app is backgrounded while
+  // still offline, the foreground catch-up starts at the background time and
+  // would skip everything from the drop until then. The next 'connected'
+  // runs the drop's catch-up too (repeats are deduped). Logout clears it.
   stropheDisconnect();
   store.dispatch(connectionStatusChanged('disconnected'));
 }
@@ -899,6 +905,7 @@ export async function getConversationTitle(chatRoomJid: string): Promise<string 
  */
 export async function teardownForLogout(): Promise<void> {
   await pushService.unregisterPush();
+  droppedAtMs = null; // the next session is a fresh login, nothing to catch up
   disconnect();
 }
 

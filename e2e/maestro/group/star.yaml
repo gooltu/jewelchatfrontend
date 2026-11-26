@@ -1,0 +1,33 @@
+# Step: in the open chat, star ${TEXT}; it must then be listed under Starred
+# messages. Ends on the chat list.
+appId: net.jewelchat.app
+---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- repeat:
+    while:
+      notVisible:
+        id: "message-actions.star"
+    times: 3
+    commands:
+      - longPressOn:
+          id: "chat-detail\\.message\\..*\\.text"
+          text: "(?i)${TEXT}"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- tapOn:
+    id: "message-actions.star"
+- runFlow: ../subflows/to-chat-list.yaml
+- tapOn:
+    id: "chat-list.header.action.more"
+- tapOn:
+    id: "chat-list.options.starred"
+- extendedWaitUntil:
+    visible:
+      text: "(?i)${TEXT}"
+    timeout: 10000
+- assertVisible:
+    id: "starred\\.message\\..*"
+- tapOn:
+    id: "starred-messages.header.back"

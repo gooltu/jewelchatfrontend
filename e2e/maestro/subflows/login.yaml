@@ -6,44 +6,59 @@ appId: net.jewelchat.app
     permissions:
       all: allow
 # Onboarding isn't always shown (the app can open straight on phone entry).
+# On iOS, clearState keeps the Keychain, so expo-secure-store's tokens survive
+# and the app restores the session straight onto the chat list. Every device
+# here always signs in as the same number, so that counts as logged in.
 - extendedWaitUntil:
     visible:
-      id: "onboarding\\.get-started|phone-entry\\.phone"
+      id: "onboarding\\.get-started|phone-entry\\.phone|tabbar\\.tab\\.ChatsTab"
     timeout: 30000
 - runFlow:
     when:
-      visible:
-        id: "onboarding.get-started"
+      notVisible:
+        id: "tabbar.tab.ChatsTab"
     commands:
+      - runFlow:
+          when:
+            visible:
+              id: "onboarding.get-started"
+          commands:
+            - tapOn:
+                id: "onboarding.get-started"
       - tapOn:
-          id: "onboarding.get-started"
-- tapOn:
-    id: "phone-entry.phone"
-- inputText: ${DEVICE_PHONE}
-- tapOn:
-    id: "phone-entry.next"
-- extendedWaitUntil:
-    visible:
-      id: "otp.digit.0"
-    timeout: 20000
-- tapOn:
-    id: "otp.digit.0"
-- inputText: "888888"
-- tapOn:
-    id: "otp.verify"
-# Brand-new accounts get the referral/nickname step; existing ones skip it.
-- extendedWaitUntil:
-    visible:
-      id: "referral\\.skip|tabbar\\.tab\\.ChatsTab"
-    timeout: 20000
-- runFlow:
-    when:
-      visible:
-        id: "referral.skip"
-    commands:
+          id: "phone-entry.phone"
+      - inputText: ${DEVICE_PHONE}
       - tapOn:
-          id: "referral.skip"
-- extendedWaitUntil:
-    visible:
-      id: "tabbar.tab.ChatsTab"
-    timeout: 20000
+          id: "phone-entry.next"
+      - extendedWaitUntil:
+          visible:
+            id: "otp.digit.0"
+          timeout: 20000
+      - tapOn:
+          id: "otp.digit.0"
+      # One digit at a time: the boxes auto-advance, and typing all six at once
+      # drops one on iOS.
+      - repeat:
+          times: 6
+          commands:
+            - inputText: "8"
+            - waitForAnimationToEnd:
+                timeout: 500
+      - tapOn:
+          id: "otp.verify"
+      # Brand-new accounts get the referral/nickname step; existing ones skip it.
+      - extendedWaitUntil:
+          visible:
+            id: "referral\\.skip|tabbar\\.tab\\.ChatsTab"
+          timeout: 20000
+      - runFlow:
+          when:
+            visible:
+              id: "referral.skip"
+          commands:
+            - tapOn:
+                id: "referral.skip"
+      - extendedWaitUntil:
+          visible:
+            id: "tabbar.tab.ChatsTab"
+          timeout: 20000

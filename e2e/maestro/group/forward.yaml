@@ -1,0 +1,34 @@
+# Step: in the open chat, forward the message ${TEXT} to the conversation
+# whose row matches ${TARGET} (its name or last message).
+appId: net.jewelchat.app
+---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- repeat:
+    while:
+      notVisible:
+        id: "message-actions.forward"
+    times: 3
+    commands:
+      - longPressOn:
+          id: "chat-detail\\.message\\..*\\.text"
+          text: "(?i)${TEXT}"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- tapOn:
+    id: "message-actions.forward"
+- extendedWaitUntil:
+    visible:
+      id: "forward-message\\.row\\..*"
+      text: "(?i).*${TARGET}.*"
+    timeout: 15000
+- tapOn:
+    id: "forward-message\\.row\\..*"
+    text: "(?i).*${TARGET}.*"
+- tapOn:
+    id: "forward-message.header.action.forward"
+- extendedWaitUntil:
+    notVisible:
+      id: "forward-message.list"
+    timeout: 15000

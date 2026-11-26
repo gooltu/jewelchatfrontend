@@ -27,8 +27,12 @@ export async function blockContact(jid: string): Promise<void> {
   chatService.notifyRoom(jid);
 }
 
+/** Unblocking is itself a choice to hear from them again, so it also counts
+ * as "Continue": the chat goes straight back to the composer instead of
+ * asking again. */
 export async function unblockContact(jid: string): Promise<void> {
   await contactRepository.setBlocked(jid, false);
+  await contactRepository.setUnknownAccepted(jid);
   chatService.notifyRoom(jid);
 }
 

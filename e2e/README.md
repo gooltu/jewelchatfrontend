@@ -39,6 +39,25 @@ npm run e2e -- 05-reply          # one flow (runs 01-login first, which starts
 
 The bot log and Maestro screenshots/logs are written to `e2e/.out/` (gitignored).
 
+With several devices attached, choose one with `E2E_DEVICE` (an adb serial or
+an iOS simulator UDID). Values set on the command line override
+`e2e/.env.local`, so each device can sign in as its own number. Two runs can go
+in parallel with different `E2E_BOT_PORT`s and bot numbers:
+
+```bash
+E2E_DEVICE=<serial> E2E_DEVICE_PHONE=9000000004 E2E_BOT_PHONES=alice:9000000005 \
+  E2E_SKIP_SEED=1 E2E_OUT=e2e/.out/bot-samsung npm run e2e
+```
+
+- iOS simulator: `android-only` flows (07, 09) are skipped, and the bot numbers
+  go into the simulator's contacts as a vCard.
+- Physical phone: set `E2E_SKIP_SEED=1`. Seeding would write into the owner's
+  own (Google/Samsung) address book. `needs-contacts` flows (08) are then
+  skipped.
+- Before a run, a Samsung needs airplane mode to also switch Wi-Fi off. One UI
+  remembers "Wi-Fi on in airplane mode"; turn Wi-Fi off once while in airplane
+  mode, or 07/09 never actually go offline.
+
 ## Flows
 
 | Flow | Checks |
@@ -165,50 +184,50 @@ Not fixed:
 - Tests hit the real servers (`game.jewelchat.net` / `chat.jewelchat.net`)
   unless `E2E_GAMESERVER`/`E2E_CHATSERVER` are set.
 
-## Group suite (3 devices)
+## Multi-device suites (no bots)
 
-`npm run e2e:group` (`scripts/run-group-e2e.sh`) runs the real app on three
-devices at once, with no bots: an Android emulator (`emu`, the group owner),
-an iOS simulator (`ios`) and a physical Android phone (`pixel`). The script
-runs small step flows from `maestro/group/` on one device at a time, in a fixed
-order, so the cross-device order is explicit. Messages and the group name carry
-a per-run id; on the other devices, bubbles and chat-list rows are found by that
-text, because their testIDs hold ids those devices can't know in advance
-(the server's room id, the sender's `SENDER_MSG_ID`).
+Two suites run the real app on four devices at once: an Android emulator
+(`emu`), an iOS simulator (`ios`), a Pixel (`pixel`) and a Samsung
+(`samsung`). Each runs small step flows from `maestro/group/` on one device at
+a time, in a fixed order, so the cross-device order is explicit. Messages
+carry a per-run id. On the other devices, bubbles and chat-list rows are found
+by that text, because their testIDs hold ids those devices can't know in
+advance (the server's room id, the sender's `SENDER_MSG_ID` and userId). Text
+checks ignore case, because a phone keyboard may auto-capitalise what Maestro
+types.
+
+| Suite | Command | Covers |
+|---|---|---|
+| Direct (1:1) | `npm run e2e:direct` | first contact + quoted reply (emu↔Samsung, iOS↔Pixel); offline both ways (Samsung in airplane mode: its queued send and an incoming message); background catch-up (Pixel on the home screen); forward to one person and to two at once; star, delete-for-me (the peer keeps it), pin, archive/unarchive |
+| Unknown sender | `npm run e2e:unknown` | stranger bots (numbers nobody's phonebook has) message the devices: the prompt shows the formatted number; Continue on the Samsung (its reply reaches the stranger); Block on the Pixel (later messages neither show nor get a delivery receipt), then Unblock (the composer returns and new messages show); Add to contacts on the emulator only (fills the Contacts app's create form; the chat then shows the name and the stranger gets a presence subscribe). Logs in first, since decisions are stored per device |
+| Group | `npm run e2e:group` | create; everyone sends and sees sender labels; add a member later (Samsung); replies (incl. quoting yourself); Pixel offline + Samsung backgrounded, both catch up; rename; leave (owner sees the count drop, others keep chatting) |
 
 Setup:
 
-1. `E2E_GROUP_PHONES=emu:…,ios:…,pixel:…` in `e2e/.env.local` (three test
-   numbers). Devices are auto-detected: the `emulator-*` serial, the other adb
-   serial, and the booted simulator. Override with `E2E_GROUP_DEVICES`.
-2. Android: install a debug build on both devices (`cd android && ./gradlew
+1. `E2E_GROUP_PHONES=emu:…,ios:…,pixel:…,samsung:…` in `e2e/.env.local`.
+   Devices are auto-detected: the `emulator-*` serial, the adb device whose
+   model matches `Pixel` / `SM_`, and the booted simulator. Override with
+   `E2E_GROUP_DEVICES=emu:<serial>,ios:<udid>,pixel:<serial>,samsung:<serial>`.
+2. Android: install a debug build on each device (`cd android && ./gradlew
    assembleDebug`, then `adb -s <serial> install -r app/build/outputs/apk/debug/app-debug.apk`).
 3. iOS: there is no `GoogleService-Info.plist` yet, so build without Firebase:
    `JC_NO_FIREBASE=1 npx expo prebuild -p ios --clean`, then
    `JC_NO_FIREBASE=1 npx expo run:ios --device "<simulator>" --no-bundler`. Run
    both with `LANG=en_US.UTF-8`, because CocoaPods crashes on a non-UTF-8 locale.
-4. One Metro on :8081 (`npx expo start`) serves all three. The script runs
-   `adb reverse` for both Android devices.
+4. One Metro on :8081 (`npx expo start`) serves all four. The scripts run
+   `adb reverse` for each Android device and wake its screen before every step.
 
-Steps: login on all three → the owner resolves the two members in Select
-Contact (the member picker only lists contacts that have already been tapped,
-see `useSelectableContacts.isActive`) → create group → each device sends, and the
-other two see it with a sender label → iOS replies to the phone's message, and
-the quote shows on the other two → the phone goes into airplane mode while two
-messages arrive, then catches up → the owner renames the group, and the others
-see the new name → the phone leaves, and the owner sees 2 members.
+Only the emulator and the simulator get phonebook entries (`seed-contacts.sh`,
+which also renames a stale entry for the same number, and a `simctl` vCard).
+The physical phones don't: their default contacts account is the owner's own,
+so test contacts would sync into their real address book. They only ever
+answer first, and their sender labels come from the game server. On iOS,
+`clearState` keeps the Keychain, so `login` accepts a restored session.
 
-The script seeds the emulator's phonebook (`seed-contacts.sh`) and the
-simulator's (`simctl addmedia` with a vCard). It doesn't seed the physical phone:
-its default contacts account is the owner's Google account, so test contacts
-would sync into their real address book. The phone only joins groups, so it
-doesn't need contacts, and its sender labels come from the game server instead
-(`E2E_GROUP_PIXEL_SENDER`, default "any non-empty").
-
-Logs and Maestro output for each step: `e2e/.out/group/<nn>-<device>-<step>.log`
+Logs and Maestro output per step: `e2e/.out/{direct,group}/<nn>-<device>-<step>.log`
 and the matching directory. `SKIP_LOGIN=1` reuses logged-in devices.
 
-### App findings from the group suite
+### App findings from the multi-device suites
 
 Fixed:
 
@@ -239,6 +258,19 @@ Fixed:
   unexpected drop now runs the MAM catch-up from the drop.
 - **After a background/foreground cycle, rooms joined while away got no
   history**: the catch-up ran before room discovery. Discovery now runs first.
+- **A drop followed by a background lost messages.** Going to the
+  background while still offline cleared the pending drop, so the foreground
+  catch-up started at the background time and skipped the gap. The drop is now
+  kept until a reconnect has caught up from it.
+- **History catch-up threw "Cannot read property 'send' of null"** when the
+  delayed re-check fired after a disconnect (the Connection outlives its
+  socket). The MAM query and the subscribe handler now require a live
+  connection.
+- **expo-sqlite's released-handle error wasn't recovered** when it came in
+  its other wordings ("…doesn't contain valid id", "…cannot be cast to type
+  class expo.modules.sqlite.NativeDatabase"). The app then failed every query
+  for the rest of the session. `database/index.ts` now recognises all three
+  and reopens.
 
 Not fixed:
 
@@ -248,9 +280,12 @@ Not fixed:
   The suite has the owner post first.
 - **Opening Group Info runs a phonebook sync**, so it shows the contacts
   disclosure (`useSelectableContacts` is used for member names).
-- **Intermittent uncaught expo-sqlite error** in dev builds: `prepareAsync`
-  "Cannot use shared object that was already released" (seen on both Android
-  devices, as a LogBox). Probably concurrent statements on the shared
-  connection. The step flows dismiss LogBox.
+- **expo-sqlite's native handle still gets released mid-session** on Android
+  devices (cause unknown; nothing in the app closes it). The connection now
+  recovers, but the failing call still surfaces as an unhandled rejection
+  (a LogBox in dev builds), which the step flows dismiss.
+- More issues and product requests from device testing (Samsung keyboard gap,
+  iOS session surviving reinstall, slow reconnect after the network returns,
+  unknown-sender chats): `docs/device-testing-notes.md`.
 - **iOS 27 needs the UIScene lifecycle.** Expo 57's template doesn't adopt
   it, so `plugins/withIosSceneLifecycle.js` adds it.

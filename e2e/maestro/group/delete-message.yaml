@@ -1,0 +1,25 @@
+# Step: in the open chat, delete ${TEXT} for this device only.
+appId: net.jewelchat.app
+---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- repeat:
+    while:
+      notVisible:
+        id: "message-actions.delete"
+    times: 3
+    commands:
+      - longPressOn:
+          id: "chat-detail\\.message\\..*\\.text"
+          text: "(?i)${TEXT}"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- tapOn:
+    id: "message-actions.delete"
+- tapOn: "(?i)delete"
+- extendedWaitUntil:
+    notVisible:
+      id: "chat-detail\\.message\\..*\\.text"
+      text: "(?i)${TEXT}"
+    timeout: 10000

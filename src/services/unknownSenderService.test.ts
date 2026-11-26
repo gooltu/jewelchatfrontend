@@ -41,6 +41,8 @@ describe('unknownSenderService', () => {
     expect(contactRepository.setBlocked).toHaveBeenCalledWith(JID, true);
     await unblockContact(JID);
     expect(contactRepository.setBlocked).toHaveBeenCalledWith(JID, false);
+    // Unblocking also counts as "Continue", so the prompt doesn't come back.
+    expect(contactRepository.setUnknownAccepted).toHaveBeenCalledWith(JID);
     expect(chatService.notifyRoom).toHaveBeenCalledTimes(2);
   });
 

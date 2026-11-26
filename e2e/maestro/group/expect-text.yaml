@@ -1,0 +1,11 @@
+# Step: in the open chat, a bubble with text ${TEXT} shows up.
+appId: net.jewelchat.app
+---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail\\.message\\..*\\.text"
+      text: "(?i)${TEXT}"
+    timeout: 30000

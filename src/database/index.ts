@@ -73,17 +73,35 @@ function withReleaseRecovery(db: SQLiteDatabase, ownPromise: Promise<SQLiteDatab
     const original = db[method].bind(db) as (...args: unknown[]) => Promise<unknown>;
     (db[method] as unknown) = (...args: unknown[]) =>
       original(...args).catch((err: unknown) => {
-        if (
-          dbPromise === ownPromise &&
-          err instanceof Error &&
-          err.message.includes('shared object that was already released')
-        ) {
+        if (dbPromise === ownPromise && isReleasedHandleError(err)) {
           dbPromise = createConnection(true);
         }
         throw err;
       });
   }
   return db;
+}
+
+/**
+ * The released-handle failure has several wordings depending on which native
+ * argument hits the dead object first. Seen on Android devices in the e2e
+ * suites, each from NativeDatabase.prepareAsync:
+ *  - "Cannot use shared object that was already released"
+ *  - "Cannot convert provided JavaScriptObject to the SharedObject, because
+ *    it doesn't contain valid id" (with "The 1st argument cannot be cast to
+ *    type class expo.modules.sqlite.NativeDatabase" or "The 2nd argument …
+ *    NativeStatement")
+ * Matching only the first left the others unrecovered: every later query
+ * failed for the rest of the session.
+ */
+function isReleasedHandleError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const message = err.message;
+  return (
+    message.includes('shared object that was already released') ||
+    message.includes("doesn't contain valid id") ||
+    /cannot be cast to type class expo\.modules\.sqlite\.Native(Database|Statement)/.test(message)
+  );
 }
 
 async function runMigrations(db: SQLiteDatabase): Promise<void> {

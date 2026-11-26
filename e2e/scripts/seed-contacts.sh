@@ -21,9 +21,19 @@ for pair in "${PAIRS[@]}"; do
   number="+${CC}${phone}"
   display="E2E $(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
 
-  if dev "content query --uri content://com.android.contacts/phone_lookup/${number} --projection display_name" \
-      | grep -q "display_name="; then
-    echo "contact ${display} already present"
+  existing=$(dev "content query --uri content://com.android.contacts/phone_lookup/${number} --projection display_name" \
+    | sed -nE 's/.*display_name=([^,]*).*$/\1/p' | head -1)
+  if [[ -n "$existing" ]]; then
+    if [[ "$existing" == "$display" ]]; then
+      echo "contact ${display} already present"
+    else
+      # Same number, other name (e.g. "E2E Alice" from an earlier bot run):
+      # rename it, so suites that pick a conversation by name find this one.
+      raw_id=$(dev "content query --uri content://com.android.contacts/data --projection raw_contact_id --where \"mimetype='vnd.android.cursor.item/phone_v2' AND data1='${number}'\"" \
+        | head -1 | sed -E 's/.*raw_contact_id=([0-9]+).*/\1/')
+      dev "content update --uri content://com.android.contacts/data --bind data1:s:'${display}' --where \"raw_contact_id=${raw_id} AND mimetype='vnd.android.cursor.item/name'\""
+      echo "renamed contact ${existing} -> ${display} (raw_contact ${raw_id})"
+    fi
     continue
   fi
 

@@ -9,12 +9,14 @@ appId: net.jewelchat.app
 - extendedWaitUntil:
     visible:
       id: "chat-list\\.row\\..*"
-      text: ".*${GROUP}.*"
+      text: "(?i).*${GROUP}.*"
     timeout: 45000
 - tapOn:
     id: "chat-list\\.row\\..*"
-    text: ".*${GROUP}.*"
+    text: "(?i).*${GROUP}.*"
+# The composer, or what replaces it: the unknown-sender prompt or the
+# blocked banner.
 - extendedWaitUntil:
     visible:
-      id: "chat-detail.composer.input"
+      id: "chat-detail\\.composer\\.input|unknown-sender|blocked-banner"
     timeout: 15000

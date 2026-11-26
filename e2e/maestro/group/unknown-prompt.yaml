@@ -1,0 +1,23 @@
+# Step: in the open 1:1 chat, the unknown-sender prompt is showing (instead of
+# the composer) with the sender's formatted number ${PHONE_LABEL}.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "unknown-sender"
+    timeout: 20000
+- extendedWaitUntil:
+    visible:
+      id: "unknown-sender.phone"
+      text: "(?i).*${PHONE_LABEL}.*"
+    timeout: 20000
+- assertVisible:
+    id: "unknown-sender.add"
+- assertVisible:
+    id: "unknown-sender.block"
+- assertVisible:
+    id: "unknown-sender.continue"
+- assertNotVisible:
+    id: "chat-detail.composer.input"

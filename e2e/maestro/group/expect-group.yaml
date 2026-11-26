@@ -7,5 +7,5 @@ appId: net.jewelchat.app
 - extendedWaitUntil:
     visible:
       id: "chat-list\\.row\\..*"
-      text: ".*${GROUP}.*"
+      text: "(?i).*${GROUP}.*"
     timeout: 45000

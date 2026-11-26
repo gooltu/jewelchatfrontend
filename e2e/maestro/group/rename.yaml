@@ -1,6 +1,8 @@
 # Group suite step: in the open group chat (as owner), rename it to ${NAME}.
 appId: net.jewelchat.app
 ---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
 - runFlow: ../subflows/dismiss-logbox.yaml
 - tapOn:
     id: "chat-detail.header.identity"

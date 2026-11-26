@@ -1,5 +1,5 @@
 import { $iq, Strophe, type StropheConnection } from 'react-native-strophe';
-import { getConnection } from './stropheClient';
+import { getConnection, isConnected } from './stropheClient';
 import { firstChildByTagName, firstChildByTagNameNs } from './stropheEvents';
 import { MSG_TYPE } from '../types/chat';
 
@@ -70,8 +70,11 @@ async function fetchArchive(
   roomJid: string | null,
   onMessage: (message: ArchivedMessage) => void,
 ): Promise<void> {
+  // A Connection object outlives its socket: after a disconnect (background,
+  // logout, a network drop) sendIQ throws "Cannot read property 'send' of
+  // null" from inside Strophe. The delayed settled re-check can fire then.
   const connection = getConnection();
-  if (!connection) throw new Error('fetchArchivedMessages: not connected');
+  if (!connection || !isConnected()) throw new Error('fetchArchivedMessages: not connected');
 
   const startIso = new Date(startMs).toISOString();
   let after: string | null = null;

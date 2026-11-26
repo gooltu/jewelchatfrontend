@@ -352,3 +352,4 @@ schema is base DDL + every migration applied in order, not `schema.ts` alone. La
   (`e2e/bot/server.mjs`, `@xmpp/client` — deliberately not the app's own strophe code). Setup,
   flow list and the bot HTTP API: `e2e/README.md`. Hits the real servers by default; test
   accounts sign in with the server's temporary fixed OTP.
+- `npm run e2e:direct` / `e2e:group` / `e2e:unknown` — multi-device suites (emulator, iOS simulator, Pixel, Samsung; no bots for direct/group, stranger bots for unknown-sender). Setup and coverage: `e2e/README.md` "Multi-device suites".

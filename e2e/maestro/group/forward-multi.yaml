@@ -1,0 +1,40 @@
+# Step: in the open chat, forward the message ${TEXT} to two conversations at
+# once: the rows matching ${TARGET1} and ${TARGET2} (a name or last message).
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- repeat:
+    while:
+      notVisible:
+        id: "message-actions.forward"
+    times: 3
+    commands:
+      - longPressOn:
+          id: "chat-detail\\.message\\..*\\.text"
+          text: "(?i)${TEXT}"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- tapOn:
+    id: "message-actions.forward"
+- extendedWaitUntil:
+    visible:
+      id: "forward-message\\.row\\..*"
+      text: "(?i).*${TARGET1}.*"
+    timeout: 15000
+- tapOn:
+    id: "forward-message\\.row\\..*"
+    text: "(?i).*${TARGET1}.*"
+- tapOn:
+    id: "forward-message\\.row\\..*"
+    text: "(?i).*${TARGET2}.*"
+# Both rows must be selected before sending.
+- assertVisible:
+    id: "forward-message\\.row\\..*\\.selected"
+    index: 1
+- tapOn:
+    id: "forward-message.header.action.forward"
+- extendedWaitUntil:
+    notVisible:
+      id: "forward-message.list"
+    timeout: 15000

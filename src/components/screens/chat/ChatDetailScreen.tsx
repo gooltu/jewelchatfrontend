@@ -583,9 +583,18 @@ export function ChatDetailScreen({ route, navigation }: RootScreenProps<'ChatDet
             void runUnknownSenderAction(() => unknownSenderService.blockContact(chatRoomJid))
           }
           onAdd={() =>
-            void runUnknownSenderAction(() =>
-              unknownSenderService.addUnknownSenderToContacts(chatRoomJid),
-            )
+            void runUnknownSenderAction(async () => {
+              // The Contacts app's create form is a separate Activity, like the
+              // image picker (see handleAttach): without this the app treats it
+              // as a real background, drops the XMPP session, and the roster
+              // subscribe sent right after saving is silently skipped.
+              setTransientBackgroundExpected(true);
+              try {
+                await unknownSenderService.addUnknownSenderToContacts(chatRoomJid);
+              } finally {
+                setTransientBackgroundExpected(false);
+              }
+            })
           }
         />
       ) : isBlocked ? (

@@ -77,6 +77,8 @@
     "typecheck": "tsc --noEmit",
     "e2e": "e2e/scripts/run-e2e.sh",
     "e2e:group": "e2e/scripts/run-group-e2e.sh",
+    "e2e:direct": "e2e/scripts/run-direct-e2e.sh",
+    "e2e:unknown": "e2e/scripts/run-unknown-e2e.sh",
     "e2e:bot": "node e2e/bot/server.mjs"
   },
   "private": true

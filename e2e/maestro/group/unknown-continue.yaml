@@ -1,0 +1,13 @@
+# Step: answer the unknown-sender prompt with Continue; the composer returns.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "unknown-sender.continue"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.composer.input"
+    timeout: 10000
+- assertNotVisible:
+    id: "unknown-sender"

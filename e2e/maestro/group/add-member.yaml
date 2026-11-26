@@ -1,0 +1,28 @@
+# Step: in the open group chat (as owner), add contact ${PHONE} (digits incl.
+# country code) from Group Info, then return to the chat.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "chat-detail.header.identity"
+- tapOn:
+    id: "group-info.add-members"
+- extendedWaitUntil:
+    visible:
+      id: "select-members.row.${PHONE}"
+    timeout: 20000
+- tapOn:
+    id: "select-members.row.${PHONE}"
+- tapOn:
+    id: "select-group-members.header.action.next"
+- extendedWaitUntil:
+    visible:
+      id: "group-info.member-count"
+    timeout: 20000
+- extendedWaitUntil:
+    notVisible:
+      id: "group-info.error"
+    timeout: 3000
+- tapOn:
+    id: "group-info.header.back"

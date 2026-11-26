@@ -380,10 +380,11 @@ const routes = {
     return { ok: true };
   },
 
-  /** { bot, contains?, since?, timeoutMs? } -> the device's message entry (incl. its `id`). */
+  /** { bot, contains?, since?, timeoutMs? } -> the device's message entry (incl. its `id`).
+   * `contains` ignores case: a phone keyboard may auto-capitalise what Maestro types. */
   'POST /wait-message': async (b) =>
     getBot(b.bot).waitFor(
-      (e) => e.kind === 'message' && e.from === device.jid && (!b.contains || e.body.includes(b.contains)),
+      (e) => e.kind === 'message' && e.from === device.jid && (!b.contains || e.body.toLowerCase().includes(String(b.contains).toLowerCase())),
       opts(b),
     ),
 
@@ -406,6 +407,13 @@ const routes = {
     bot.xmpp.socket?.end?.();
     await new Promise((r) => setTimeout(r, 500));
     return { status: bot.xmpp.status };
+  },
+
+  /** { phone } (10 digits) -> { userId, jid } of any test account, e.g. a
+   * physical phone a bot should message directly (`send` with `to: <jid>`). */
+  'POST /lookup': async (b) => {
+    const { userId, domain } = await lookupIdentity(String(b.phone));
+    return { userId, jid: `${userId}@${domain}` };
   },
 
   /** { bot } -> full inbox, for debugging a failing flow. */

@@ -1,6 +1,8 @@
 # Group suite step: in the open chat, long-press ${QUOTE} and reply ${TEXT}.
 appId: net.jewelchat.app
 ---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
 - runFlow: ../subflows/dismiss-logbox.yaml
 - repeat:
     while:
@@ -10,7 +12,7 @@ appId: net.jewelchat.app
     commands:
       - longPressOn:
           id: "chat-detail\\.message\\..*\\.text"
-          text: ${QUOTE}
+          text: "(?i)${QUOTE}"
       - waitForAnimationToEnd:
           timeout: 2000
 - tapOn:
@@ -19,6 +21,10 @@ appId: net.jewelchat.app
     id: "chat-detail.composer.reply"
 - tapOn:
     id: "chat-detail.composer.input"
+# Let the keyboard finish opening: typing into it while it animates in
+# drops the first characters (seen on a Samsung keyboard).
+- waitForAnimationToEnd:
+    timeout: 2000
 - inputText: ${TEXT}
 - tapOn:
     id: "chat-detail.composer.send"

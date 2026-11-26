@@ -1,6 +1,8 @@
 # Group suite step: in the open group chat, leave it; it must drop off the list.
 appId: net.jewelchat.app
 ---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
 - runFlow: ../subflows/dismiss-logbox.yaml
 - tapOn:
     id: "chat-detail.header.identity"
@@ -23,5 +25,5 @@ appId: net.jewelchat.app
 - extendedWaitUntil:
     notVisible:
       id: "chat-list\\.row\\..*"
-      text: ".*${GROUP}.*"
+      text: "(?i).*${GROUP}.*"
     timeout: 15000

@@ -32,4 +32,4 @@ appId: net.jewelchat.app
     timeout: 20000
 - assertVisible:
     id: "chat-detail.header.title"
-    text: ${GROUP}
+    text: "(?i)${GROUP}"

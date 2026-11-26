@@ -1,0 +1,37 @@
+# Step: answer the unknown-sender prompt with "Add to contacts": the system
+# Contacts app's create form opens with the number pre-filled; save it under
+# ${NAME}. Back in the chat, the prompt is gone and the header shows the name.
+# Emulator only: on a real phone this writes into the owner's address book.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "unknown-sender.add"
+# Google Contacts' "Add to contacts" sheet.
+- extendedWaitUntil:
+    visible: "Name"
+    timeout: 15000
+- tapOn: "Name"
+- inputText: ${NAME}
+- tapOn: "Save"
+# Back in the app, re-reading the phonebook shows the one-time contacts
+# disclosure on a device that hasn't answered it yet (fresh login).
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      visible: "Find friends on Jewel Chat"
+    commands:
+      - tapOn: "(?i)continue"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.composer.input"
+    timeout: 20000
+- assertNotVisible:
+    id: "unknown-sender"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.header.title"
+      text: "(?i)${NAME}"
+    timeout: 10000

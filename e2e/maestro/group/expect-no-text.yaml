@@ -1,0 +1,15 @@
+# Step: in the open chat, ${TEXT} does NOT show up within ~15 s (e.g. it was
+# sent by a blocked contact).
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail\\.message\\..*\\.text"
+      text: "(?i)${TEXT}"
+    timeout: 15000
+    optional: true
+- assertNotVisible:
+    id: "chat-detail\\.message\\..*\\.text"
+    text: "(?i)${TEXT}"

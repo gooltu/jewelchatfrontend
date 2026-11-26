@@ -1,0 +1,30 @@
+# Step: answer the unknown-sender prompt with Block (and confirm); the
+# blocked banner replaces the composer.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "unknown-sender.block"
+# Confirm in the Alert. Android: the destructive button is the positive one;
+# iOS: the alert's "Block", which sits below its message.
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: "android:id/button1"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "Block"
+          below:
+            text: "(?i).*won't be told.*"
+- extendedWaitUntil:
+    visible:
+      id: "blocked-banner"
+    timeout: 10000
+- assertNotVisible:
+    id: "chat-detail.composer.input"

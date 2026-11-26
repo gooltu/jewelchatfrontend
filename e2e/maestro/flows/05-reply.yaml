@@ -54,6 +54,10 @@ tags: [chat]
     id: "chat-detail.composer.reply"
 - tapOn:
     id: "chat-detail.composer.input"
+# Let the keyboard finish opening: typing into it while it animates in
+# drops the first characters (seen on a Samsung keyboard).
+- waitForAnimationToEnd:
+    timeout: 2000
 - inputText: "Device reply ${output.runId}"
 - tapOn:
     id: "chat-detail.composer.send"

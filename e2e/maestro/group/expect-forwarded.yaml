@@ -1,0 +1,13 @@
+# Step: in the open chat, ${TEXT} arrives marked as forwarded.
+appId: net.jewelchat.app
+---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail\\.message\\..*\\.text"
+      text: "(?i)${TEXT}"
+    timeout: 30000
+- assertVisible:
+    id: "chat-detail\\.message\\..*\\.forwarded"

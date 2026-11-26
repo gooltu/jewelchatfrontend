@@ -2,17 +2,20 @@
 # ${QUOTE} (resolved to this device's own copy of the quoted message).
 appId: net.jewelchat.app
 ---
+# Foreground the app (keeps its screen): a phone may have slept since.
+- launchApp: { stopApp: false }
 - runFlow: ../subflows/dismiss-logbox.yaml
 - extendedWaitUntil:
     visible:
       id: "chat-detail\\.message\\..*\\.text"
-      text: ${TEXT}
+      text: "(?i)${TEXT}"
     timeout: 30000
 # The quote block exists, and the quoted text shows twice: once in the
 # original bubble, once in the quote. (Android flattens the quote's View, so
-# its texts aren't descendants of `<bubble>.quote` in Maestro's tree.)
+# its texts aren't descendants of `<bubble>.quote` in Maestro's tree; iOS
+# folds them into the reply bubble's label, hence the substring match.)
 - assertVisible:
     id: "chat-detail\\.message\\..*\\.quote"
 - assertVisible:
-    text: ${QUOTE}
+    text: "(?i).*${QUOTE}.*"
     index: 1

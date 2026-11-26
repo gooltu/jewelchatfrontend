@@ -1,0 +1,44 @@
+# Step: on the chat list, pin the conversation matching ${MATCH}, then
+# archive it, find it under Archived, and unarchive it again.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/to-chat-list.yaml
+- longPressOn:
+    id: "chat-list\\.row\\..*"
+    text: "(?i).*${MATCH}.*"
+- tapOn:
+    id: "conversation-actions.pin"
+- extendedWaitUntil:
+    visible:
+      id: "chat-list.divider.pinned"
+    timeout: 10000
+- longPressOn:
+    id: "chat-list\\.row\\..*"
+    text: "(?i).*${MATCH}.*"
+- tapOn:
+    id: "conversation-actions.archive"
+- extendedWaitUntil:
+    notVisible:
+      id: "chat-list\\.row\\..*"
+      text: "(?i).*${MATCH}.*"
+    timeout: 10000
+- tapOn:
+    id: "chat-list.archived"
+- extendedWaitUntil:
+    visible:
+      id: "archived-chats\\.row\\..*"
+      text: "(?i).*${MATCH}.*"
+    timeout: 10000
+- longPressOn:
+    id: "archived-chats\\.row\\..*"
+    text: "(?i).*${MATCH}.*"
+- tapOn:
+    id: "conversation-actions.unarchive"
+- tapOn:
+    id: "archived-chats.header.back"
+- extendedWaitUntil:
+    visible:
+      id: "chat-list\\.row\\..*"
+      text: "(?i).*${MATCH}.*"
+    timeout: 10000

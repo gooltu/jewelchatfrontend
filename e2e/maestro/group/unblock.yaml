@@ -1,0 +1,11 @@
+# Step: in the open (blocked) chat, Unblock; the composer returns.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "blocked-banner.unblock"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.composer.input"
+    timeout: 10000
