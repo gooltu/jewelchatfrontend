@@ -8,8 +8,9 @@ export type AuthStackParamList = {
   Splash: undefined;
   Onboarding: undefined;
   PhoneEntry: undefined;
-  Otp: { userId: number; phone: string; active: boolean; domain: string };
-  ReferralNickname: { userId: number };
+  Otp: { userId: number; phone: string; active: boolean; domain: string; name: string };
+  ProfileName: { userId: number; isNewUser: boolean; initialName: string };
+  ReferralCode: { userId: number; name: string };
 };
 
 export type ChatStackParamList = {

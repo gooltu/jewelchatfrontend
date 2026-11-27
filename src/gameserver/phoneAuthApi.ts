@@ -74,6 +74,17 @@ export async function initialDetails(reference: string, name: string): Promise<I
   return data;
 }
 
+export interface UpdateProfileNameResponse {
+  error: boolean;
+  message?: string;
+}
+
+export async function updateProfileName(name: string): Promise<UpdateProfileNameResponse> {
+  const { data } = await gameserverClient.post<UpdateProfileNameResponse>('/updateProfileName', { name });
+  if (data.error) throw new Error(data.message || 'updateProfileName failed');
+  return data;
+}
+
 export async function resendVcode(userId: number): Promise<ResendVcodeResponse> {
   const { data } = await gameserverClient.post<ResendVcodeResponse>('/resendVcode', { userId });
   if (data.error) throw new Error(data.message || 'resendVcode failed');

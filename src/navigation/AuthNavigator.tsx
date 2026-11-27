@@ -3,7 +3,8 @@ import { SplashScreen } from '@components/screens/auth/SplashScreen';
 import { OnboardingScreen } from '@components/screens/auth/OnboardingScreen';
 import { PhoneEntryScreen } from '@components/screens/auth/PhoneEntryScreen';
 import { OtpScreen } from '@components/screens/auth/OtpScreen';
-import { ReferralNicknameScreen } from '@components/screens/auth/ReferralNicknameScreen';
+import { ProfileNameScreen } from '@components/screens/auth/ProfileNameScreen';
+import { ReferralCodeScreen } from '@components/screens/auth/ReferralCodeScreen';
 import type { AuthStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -15,7 +16,8 @@ export function AuthNavigator() {
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="PhoneEntry" component={PhoneEntryScreen} />
       <Stack.Screen name="Otp" component={OtpScreen} />
-      <Stack.Screen name="ReferralNickname" component={ReferralNicknameScreen} />
+      <Stack.Screen name="ProfileName" component={ProfileNameScreen} />
+      <Stack.Screen name="ReferralCode" component={ReferralCodeScreen} />
     </Stack.Navigator>
   );
 }

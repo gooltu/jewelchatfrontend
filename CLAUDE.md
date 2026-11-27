@@ -304,7 +304,7 @@ App-side convention is `<screen>.<element>[.<record>]`, dot-separated kebab-case
 - Lists: `chat-list.row.<jid-node>`, `archived-chats.row.…`, `forward-message.row.…`,
   `select-contact.row.<phone-digits>`, `select-members.row.<phone-digits>`, `starred.message.…`.
 - Settings: `settings.privacy-policy`, `settings.terms`, `settings.delete-account`. Phone entry legal line: `phone-entry.legal`.
-- Auth: `phone-entry.phone`/`.next`, `otp.digit.<0-n>`/`.verify`/`.resend`, `referral.*`,
+- Auth: `phone-entry.phone`/`.next`, `otp.digit.<0-n>`/`.verify`/`.resend`, `profile-name.*`, `referral.*`,
   `onboarding.get-started`.
 
 Record segments must be ids that are identical on every device (`SENDER_MSG_ID`, the JID's

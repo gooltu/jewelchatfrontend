@@ -46,11 +46,27 @@ appId: net.jewelchat.app
                 timeout: 500
       - tapOn:
           id: "otp.verify"
-      # Brand-new accounts get the referral/nickname step; existing ones skip it.
+      # Brand-new accounts (and existing ones with no name on the server) get
+      # the mandatory name step; brand-new accounts then get the optional
+      # referral step. Named existing accounts go straight to the chat list.
       - extendedWaitUntil:
           visible:
-            id: "referral\\.skip|tabbar\\.tab\\.ChatsTab"
+            id: "profile-name\\.name|referral\\.skip|tabbar\\.tab\\.ChatsTab"
           timeout: 20000
+      - runFlow:
+          when:
+            visible:
+              id: "profile-name.name"
+          commands:
+            - tapOn:
+                id: "profile-name.name"
+            - inputText: "E2E ${DEVICE_PHONE}"
+            - tapOn:
+                id: "profile-name.continue"
+            - extendedWaitUntil:
+                visible:
+                  id: "referral\\.skip|tabbar\\.tab\\.ChatsTab"
+                timeout: 20000
       - runFlow:
           when:
             visible:

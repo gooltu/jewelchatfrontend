@@ -366,9 +366,9 @@ export async function checkForExplodedBombs(): Promise<void> {
 /** Phone/OTP sign-up flow — see gameserver/phoneAuthApi.ts for the wire contract. */
 export async function requestOtp(
   phone: string,
-): Promise<{ userId: number; active: boolean; domain: string }> {
+): Promise<{ userId: number; active: boolean; domain: string; name: string }> {
   const result = await phoneAuthApi.registerPhoneNumber(`${COUNTRY_CODE}${phone}`);
-  return { userId: result.userId, active: result.active, domain: result.domain };
+  return { userId: result.userId, active: result.active, domain: result.domain, name: result.name ?? '' };
 }
 
 export async function verifyOtp(
@@ -424,14 +424,29 @@ export async function completeAuth(userId: number, displayName?: string): Promis
   void refreshUserAchievements();
 }
 
-export async function submitInitialDetails(
+/**
+ * Saves the signed-in user's display name. Uses /updateProfileName rather than
+ * /initialDetails: the latter only writes `name` when a valid referrer is also
+ * supplied, so a user who skips the referral step would lose their name.
+ */
+export async function saveProfileName(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('Please enter your name.');
+  await phoneAuthApi.updateProfileName(trimmed);
+}
+
+/**
+ * First-time users only. /initialDetails overwrites `name` with whatever it's
+ * sent, so the name saved on the previous screen is sent again alongside the
+ * reference.
+ */
+export async function submitReference(
   userId: number,
   referrerPhone: string,
-  nickname: string,
+  name: string,
 ): Promise<void> {
-  const reference = referrerPhone ? `${COUNTRY_CODE}${referrerPhone}` : referrerPhone;
-  await phoneAuthApi.initialDetails(reference, nickname);
-  await completeAuth(userId, nickname || undefined);
+  await phoneAuthApi.initialDetails(`${COUNTRY_CODE}${referrerPhone}`, name.trim());
+  await completeAuth(userId, name.trim());
 }
 
 export async function login(username: string, password: string): Promise<void> {

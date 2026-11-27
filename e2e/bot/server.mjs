@@ -87,8 +87,8 @@ async function lookupIdentity(phone10) {
 }
 
 /** Full sign-in: register -> verify (fixed OTP) -> access token. New accounts
- * skip /initialDetails, exactly like ReferralNicknameScreen's "Skip" (which
- * never calls it — the server rejects an empty referrer). */
+ * skip /initialDetails, exactly like ReferralCodeScreen's "Skip" (which never
+ * calls it — the server rejects an empty referrer). Bots don't set a name. */
 async function signIn(phone10) {
   const { userId, domain } = await lookupIdentity(phone10);
   const { refreshToken } = await gamePost('/verifyCode', { userId, verificationCode: cfg.otp });

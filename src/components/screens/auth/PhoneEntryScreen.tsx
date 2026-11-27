@@ -26,8 +26,8 @@ export function PhoneEntryScreen({ navigation }: AuthScreenProps<'PhoneEntry'>) 
     setSubmitting(true);
     setError(null);
     try {
-      const { userId, active, domain } = await authService.requestOtp(phone);
-      navigation.navigate('Otp', { userId, phone, active, domain });
+      const { userId, active, domain, name } = await authService.requestOtp(phone);
+      navigation.navigate('Otp', { userId, phone, active, domain, name });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send a verification code. Please try again.');
     } finally {

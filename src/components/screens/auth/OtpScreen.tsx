@@ -30,7 +30,7 @@ const CODE_LENGTH = 6;
 const MAX_RESENDS = 3;
 
 export function OtpScreen({ route, navigation }: AuthScreenProps<'Otp'>) {
-  const { userId, phone, active, domain } = route.params;
+  const { userId, phone, active, domain, name } = route.params;
   const styles = useStyles(makeStyles);
   const colors = useThemeColors();
   const [digits, setDigits] = useState<string[]>(Array(CODE_LENGTH).fill(''));
@@ -91,10 +91,14 @@ export function OtpScreen({ route, navigation }: AuthScreenProps<'Otp'>) {
     setError(null);
     try {
       await authService.verifyOtp(userId, code, { phone, domain });
-      if (active) {
-        await authService.completeAuth(userId);
+      // First-time users: name (mandatory) then referral (optional).
+      // Returning users with no name on the server: name only.
+      if (!active) {
+        navigation.navigate('ProfileName', { userId, isNewUser: true, initialName: name });
+      } else if (!name.trim()) {
+        navigation.navigate('ProfileName', { userId, isNewUser: false, initialName: '' });
       } else {
-        navigation.navigate('ReferralNickname', { userId });
+        await authService.completeAuth(userId, name.trim());
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid or expired code. Please try again.');
