@@ -1,0 +1,31 @@
+# D11: the same stanza id sent twice is stored once (the first copy wins).
+appId: net.jewelchat.app
+name: D11
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- evalScript: ${output.dupId = 'e2e-dup-' + output.runId}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", ID: "${output.dupId}", TEXT: "Dup first ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-ack, BOT: "${BOT1}", MSG_ID: "${output.dupId}", KIND: received }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", ID: "${output.dupId}", TEXT: "Dup second ${output.runId}" }
+# A later, distinct message proves the duplicate had time to be processed.
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "After dup ${output.runId}" }
+- extendedWaitUntil:
+    visible: { text: "After dup ${output.runId}" }
+    timeout: 20000
+- assertVisible: { text: "Dup first ${output.runId}" }
+- assertNotVisible: { text: "Dup second ${output.runId}" }

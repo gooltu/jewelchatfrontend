@@ -1,96 +1,166 @@
-# E2E tests (Layer 1: one device + bot peers)
+# E2E tests
 
-One Android emulator runs the real app under [Maestro](https://maestro.mobile.dev).
-Everyone else in the conversation is a **bot peer**: a Node process
-(`bot/server.mjs`) that logs test accounts into the real game and chat servers
-and plays the other side over XMPP. Maestro flows control the bots and check
-what reached them through a small localhost HTTP API (`maestro/scripts/bot.js`).
+Two tiers, so the slow physical-phone runs are rare:
+
+| Tier | Command | Devices | When |
+|---|---|---|---|
+| **Emulator** | `npm run e2e:emu` | Android emulator + iOS simulator, each with its own bot peers, then the two apps together | Every run |
+| **Weekly** | `npm run e2e:weekly` | Pixel + Samsung, with the emulator and simulator as their peers | Once a week or less |
+
+Bot peers are Node processes (`bot/server.mjs`, `@xmpp/client` — deliberately
+not the app's own strophe code) that sign test accounts into the real game and
+chat servers and play the other side over XMPP: 1:1 chats, receipts, typing,
+reactions, presence and **groups** (MUC Light: create, add/remove, rename,
+leave, send, react). Maestro flows drive the app and control the bots through
+a localhost HTTP API (`maestro/scripts/bot.js`).
 
 ```
- Maestro ──drives UI──▶ emulator (app) ◀──XMPP──▶ chat server ◀──XMPP──▶ bot "alice"
-    └──────── runScript ─ HTTP 127.0.0.1:7777 ─────────────────────────────┘
+ Maestro ──drives UI──▶ emulator / simulator (app) ◀──XMPP──▶ chat server ◀──XMPP──▶ bots
+    └──────── runScript ─ HTTP 127.0.0.1:7777 (emu) / :7778 (ios) ───────────────────┘
 ```
+
+Every test case has an id, a title and a short description in
+`report/catalog.json`. That file is also the run order and the dependency list
+(`needs`: a case is skipped when the case it builds on didn't pass), and marks
+known issues (`knownIssue`: a failure is reported as "expected fail"; a pass is
+flagged so the catalog gets updated).
+
+## Live report
+
+Each runner writes `e2e/.out/report/index.html` after every case. Open it in a
+browser while tests run; it reloads itself every 3 s until the run ends
+(`E2E_OPEN_REPORT=1` opens it for you). It shows, per case: description,
+edge-case / known-issue badges, a status per platform (running, passed,
+failed, expected fail, skipped), duration, links to the Maestro log and the
+last screenshot, and the last 10 runs as coloured dots. `npm run e2e:report`
+re-renders and opens it.
 
 ## One-time setup
 
-1. Install Maestro (`brew tap mobile-dev-inc/tap && brew install maestro`), plus a JDK 17+ if you don't already have one.
-2. `cp e2e/.env.example e2e/.env.local`, then fill in the test numbers. All of
-   them must be numbers that nobody really owns, because the server accepts OTP
-   `888888` for every number.
-3. Boot **one** emulator, headless if you can:
-   `emulator -avd <name> -no-window -no-boot-anim`. Once a windowed emulator
-   sits in the background, macOS slows it down a lot, and flows get slow
-   and flaky.
-4. Run `npm run android` to install the dev build and start Metro. If the
-   build is already installed, `npx expo start` plus
-   `adb reverse tcp:8081 tcp:8081` is enough, because testIDs and flows are JS-only.
-   After changing app code with `git checkout`, `cp` or similar, restart Metro
-   with `--clear`. Its file watcher missed those changes more than once, and
-   the app then kept running the old code from its cached bundle.
+1. Install Maestro (`brew tap mobile-dev-inc/tap && brew install maestro`) and a JDK 17+.
+2. `cp e2e/.env.example e2e/.env.local` and fill in the **admin login**
+   (`E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD`, a JewelChat Admin account). The
+   account pool is already filled in (below).
+3. Boot one Android emulator (headless if you can:
+   `emulator -avd <name> -no-window -no-boot-anim`) and one iOS simulator.
+4. Install the dev build on both: `npm run android`; for iOS there's no
+   `GoogleService-Info.plist` yet, so `JC_NO_FIREBASE=1 npx expo prebuild -p ios --clean`
+   then `JC_NO_FIREBASE=1 npx expo run:ios --device "<simulator>" --no-bundler`
+   (both with `LANG=en_US.UTF-8`; CocoaPods crashes otherwise).
+5. One Metro on :8081 (`npx expo start`) serves both. After switching code with
+   `git checkout` or `cp`, restart it with `--clear`: its watcher has missed
+   such changes before and kept serving the old bundle.
+
+### Account pool
+
+All numbers are reserved test numbers (`90000000NN`); the server accepts OTP
+`888888` for every number, so never put a real number here.
+`reset-accounts.mjs` refuses anything outside that pattern.
+
+| Role | Numbers |
+|---|---|
+| Devices: emu / ios / pixel / samsung | 01 / 02 / 03 / 04 |
+| Emulator bots alice, bob, cara (in the emulator's phonebook) | 05–07 |
+| Simulator bots dan, eve, finn (in the simulator's phonebook) | 11–13 |
+| Strangers (never in a phonebook): emu / ios | 08–10 / 14–16 |
+| Sign-up accounts (go through Name + Referral every run): emu / ios | 98, 96 / 99, 97 |
+| Unknown referrer (must stay unregistered) | 89 |
+
+### Account reset
+
+Before a run, `npm run e2e:emu` resets every pool account through the same
+admin API the JewelChat Admin app's **Reset account** screen uses
+(`POST /admin/users/:id/reset` on ServerProjextX). A reset puts the account
+back to a new sign-up's state (name back to the placeholder, referral and
+progress cleared) and clears its chat-server archive, roster, group
+memberships and push subscriptions. The id, phone and JID stay the same.
+Numbers that were never registered are skipped (already fresh).
+
+```bash
+npm run e2e:reset -- --dry-run      # list phone -> user id, reset nothing
+npm run e2e:reset                   # reset the whole pool
+npm run e2e:reset -- 9000000098     # just these numbers
+```
+
+`E2E_NO_RESET=1` skips it when you're iterating on one flow.
 
 ## Running
 
 ```bash
-npm run e2e                      # all flows, in config.yaml order
-npm run e2e -- 05-reply          # one flow (runs 01-login first, which starts
-                                 # from a fresh install; open-chat creates the
-                                 # bot's chat if it doesn't exist yet)
+npm run e2e:emu                                    # everything on emulator + simulator
+E2E_PLATFORMS=emu npm run e2e:emu                  # Android emulator only
+E2E_SUITES=group,cross-app npm run e2e:emu         # some suites (auth, direct, unknown, group, cross-app)
+E2E_ONLY=D10,G01 E2E_PLATFORMS=emu npm run e2e:emu # some cases (B01 sign-in always runs first)
+npm run e2e -- 05-reply                            # one 1:1 case on the emulator, no reset
+npm run e2e:weekly                                 # physical phones
+npm run e2e:test-tools                             # unit tests for the report generator
 ```
 
-The bot log and Maestro screenshots/logs are written to `e2e/.out/` (gitignored).
+What `e2e:emu` does: resets the accounts, starts the report, runs
+`scripts/run-platform.sh emu` and `… ios` **in parallel** (each with its own
+bot server and its own bots and strangers), then `scripts/run-cross-app.sh`
+(the two apps together, plus bots). Each case is one Maestro flow; logs,
+screenshots and the hierarchy dumps go to `e2e/.out/emu-suite/<platform>/<case>/`.
 
-With several devices attached, choose one with `E2E_DEVICE` (an adb serial or
-an iOS simulator UDID). Values set on the command line override
-`e2e/.env.local`, so each device can sign in as its own number. Two runs can go
-in parallel with different `E2E_BOT_PORT`s and bot numbers:
+Platform notes:
+- iOS simulator: airplane mode and the system Contacts form don't exist, so
+  `android-only` cases (B07, D18, U04 and G12's offline half) are not run there.
+  `clearState` keeps the iOS Keychain, so the runner resets the simulator's
+  keychain (`simctl keychain reset`) before the sign-up and sign-in cases.
+- Physical phones never get test contacts (their default contacts account is
+  the owner's own address book), so in the weekly tier they only answer chats
+  the emulator or simulator start, and answer the unknown-sender prompt.
 
-```bash
-E2E_DEVICE=<serial> E2E_DEVICE_PHONE=9000000004 E2E_BOT_PHONES=alice:9000000005 \
-  E2E_SKIP_SEED=1 E2E_OUT=e2e/.out/bot-samsung npm run e2e
-```
+## Test cases
 
-- iOS simulator: `android-only` flows (07, 09) are skipped, and the bot numbers
-  go into the simulator's contacts as a vCard.
-- Physical phone: set `E2E_SKIP_SEED=1`. Seeding would write into the owner's
-  own (Google/Samsung) address book. `needs-contacts` flows (08) are then
-  skipped.
-- Before a run, a Samsung needs airplane mode to also switch Wi-Fi off. One UI
-  remembers "Wi-Fi on in airplane mode"; turn Wi-Fi off once while in airplane
-  mode, or 07/09 never actually go offline.
+The full list with descriptions is `report/catalog.json` (and the report page).
+Flows: `maestro/cases/<id>-*.yaml` and the original `maestro/flows/0N-*.yaml`
+(B01–B09); multi-device steps are in `maestro/group/`.
 
-## Flows
-
-| Flow | Checks |
-|---|---|
-| 01-login | Real phone → OTP → (referral skip) → chat list |
-| 02-receive-message | Bot message appears; device sends `<received/>`, then `<displayed/>` once the chat is open |
-| 03-send-message | Device message reaches the bot with `msgtype=0` (TEXT); bubble is addressable by the same id |
-| 04-typing-indicator | Bot `composing`/`paused` → header subtitle "typing…" appears and disappears |
-| 05-reply | Bot's reply shows a quote; device's long-press reply carries `<reply id=…>` |
-| 06-reaction | Bot reaction (XEP-0444) renders a pill under the device's message (receiving only; the app can't send reactions yet) |
-| 07-offline-queue | Sent in airplane mode → not delivered → delivered after reconnect (Android only) |
-| 08-presence | Bot online/offline → header "Online". Needs `seed-contacts.sh` (the runner calls it) |
-| 09-reconnect | After an airplane-mode drop **and** after a background→foreground cycle, an incoming message is still stored, shown and receipted (regression test for the handler-wipe bug) |
-
-07 and 09 force reconnects and run right after 03, so every flow after them
-runs on a reconnected session.
+| Suite | Cases | Covers |
+|---|---|---|
+| Sign-up & login (A) | A01–A10 | Name required (empty/spaces), 50-char cap, back to edit the name, partial / own / unknown / valid referrer, skip then sign in again, wrong OTP, short phone number |
+| 1:1 chat (B, D) | B01–B09, D10–D23 | Receive, send, typing, reply, reaction, offline queue, presence, reconnect; burst of 20 in order, duplicate id, long/multi-line/emoji/RTL text, whitespace-only, reaction replace/clear, reply to unknown parent, forwarded label, typing clears on message, 3 queued offline in order, read marker timing, star/delete/pin/archive/delete chat, forward to two, background catch-up, killed app (known issue) |
+| Unknown senders (U) | U01–U06 | Prompt, Continue (survives restart), Block (no receipt, survives restart) / Unblock, Add to contacts, phonebook sender, group from a stranger |
+| Groups (G) | G01–G16 | Bot-created group, device-created group, sender labels (name vs number), added mid-conversation, removed by owner, rename (emoji/long), member leaves, device leaves, replies (bot/self), reactions, id-collision regression, offline/background catch-up, 12-room paging regression, interleaved burst, forward in/out, empty invite (known issue) |
+| Cross-app (X) | X01–X07 | Emulator ↔ simulator: first contact + presence, text both ways, reply, mixed group with bots, offline and background catch-up, forward to the other app and to a bot |
+| Weekly (P) | P01–P05 | Real push notification opens the chat, Samsung network drop, real keyboard, four-device group smoke, Pixel ↔ simulator 1:1 with offline |
 
 ## Writing a flow
 
 - Find elements by `testID` (see CLAUDE.md "E2E testIDs"), never by visible text alone.
+- Add the case to `report/catalog.json` (id, suite, platforms, title, a one-
+  or two-sentence description, `edge`, `needs`, `knownIssue`) — the runner only
+  runs what's listed there, in that order.
+- Bot names are parameters, never literals: `${BOT1}`..`${BOT3}` (their
+  phonebook names `${BOT1_NAME}`.., numbers `${BOT1_PHONE}`..) and strangers
+  `${S1}`..`${S3}`. The emulator and the simulator use different bots.
 - `runScript: { file: ../scripts/bot.js, env: { ACTION: reset } }` first. This
-  clears bot inboxes and sets `output.bots.<name>.userId`, `output.device` and
-  `output.runId`. Use `output.runId` in message text so each run's messages are unique.
+  clears bot inboxes and sets `output.bots.<name>.userId`, `output.device`,
+  `output.rooms.<key>` and `output.runId`. Use `output.runId` in message text so
+  each run's messages are unique.
 - `ACTION` can be any bot route: `send`, `typing`, `react`, `presence`,
   `subscribe`, `ack`, `auto-receipts`, `wait-message`, `wait-ack`,
-  `wait-chatstate`, `wait-reaction`, `inbox`, `drop` (cuts the bot's own
-  socket, for testing the bot itself). It can also be one of the script-only
-  actions `reset`, `expect-no-message` and `probe-ack` (a `wait-ack` that sets
-  `output.probeOk` instead of failing, for use in `repeat` loops). The bot
-  reconnects itself before any call if the server dropped its idle session. Parameters are upper-case
-  env names: `BOT`, `TO`, `TEXT`, `MSG_ID`, `STATE`, `EMOJIS`, `KIND`,
-  `CONTAINS`, `AVAILABLE`, `REPLY_TO_ID`, `TIMEOUT_MS`, `EXPECT_REPLY_TO`.
+  `wait-chatstate`, `wait-reaction`, `inbox`, `burst` (N messages back to
+  back), `drop` (cuts the bot's own socket, for testing the bot itself), and
+  the group routes `group-create` (with `KEY` to name the room for later
+  flows), `group-create-many`, `group-add`, `group-remove`, `group-leave`,
+  `group-rename`, `group-send`, `group-burst`, `group-react`,
+  `wait-group-message`, `wait-affiliation`, `wait-groupconfig`. It can also be
+  one of the script-only actions `reset`, `expect-no-message`,
+  `expect-no-group-message` and `probe-ack` (a `wait-ack` that sets
+  `output.probeOk` instead of failing). The bot reconnects itself before any
+  call if the server dropped its idle session. Parameters are upper-case env
+  names: `BOT`, `TO`, `TEXT`, `ID` (explicit message id), `COUNT`, `FORWARDED`,
+  `MSG_ID`, `STATE`, `EMOJIS` (`,` alone clears), `KIND`, `CONTAINS`,
+  `AVAILABLE`, `REPLY_TO_ID`, `REPLY_TO_CREATOR`, `TIMEOUT_MS`,
+  `EXPECT_REPLY_TO`, `EXPECT_FORWARDED`, and for groups `ROOM` (a room JID or
+  `@<key>`), `NAME`, `MEMBERS`, `MEMBER`, `AFFILIATION`, `SENDER`, `KEY`.
+  `MEMBERS`/`MEMBER`/`SENDER`/`TO` take `device`, a bot name or a raw JID.
   The result is stored in `output.bot`.
+- A group's chat-list row is `chat-list.row.<room node>` (`output.rooms.<key>.node`).
+- Compare a field's text by its id (Maestro matches the whole text): a
+  screen-wide text check also sees the keyboard's suggestion strip.
 - Keep the app process alive. Flows foreground it with
   `launchApp: { stopApp: false }` and move between screens with
   `subflows/to-chat-list.yaml`, which taps the header's back button rather
@@ -174,10 +244,13 @@ Not fixed:
   with the testID and an `accessibilityLabel` for each state.
 - The device never sends typing indicators (`ChatInputBar` has no keystroke
   callback), so there's no device→bot typing flow.
-- Groups (MUC-Light) aren't covered by the bot suite (the bot has no room
-  support). The separate three-device group suite below covers them.
-- Group reactions: the app can't send reactions and the bots can't join rooms,
-  so nothing exercises reactions in a group yet.
+- The app can't send reactions, so reactions are only tested in the
+  bot → device direction (1:1 and group).
+- The group server strips custom attributes when it reflects a message: a
+  bot's `msgtype="0"` came back without it (seen while building the bot's
+  group support). `forwarded="1"` is very likely dropped the same way, so
+  G15 checks that a message forwarded *into* a group arrives, not its flag.
+- Media (photo/video/voice) isn't covered: the bots can't upload to S3.
 - Dev builds show React Native's LogBox (the warning toast and the full-screen
   error log), which can cover the UI. `subflows/dismiss-logbox.yaml` clears it,
   but a release build would avoid it entirely.
@@ -186,7 +259,9 @@ Not fixed:
 
 ## Multi-device suites (no bots)
 
-Two suites run the real app on four devices at once: an Android emulator
+These older suites still work, but everything they cover except physical-phone
+behaviour now runs on the emulator tier; use `npm run e2e:weekly` for the
+phones. Two suites run the real app on four devices at once: an Android emulator
 (`emu`), an iOS simulator (`ios`), a Pixel (`pixel`) and a Samsung
 (`samsung`). Each runs small step flows from `maestro/group/` on one device at
 a time, in a fixed order, so the cross-device order is explicit. Messages

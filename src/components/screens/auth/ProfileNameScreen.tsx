@@ -16,14 +16,14 @@ import type { AuthScreenProps } from '@navigation/types';
 const MAX_NAME_LENGTH = 50;
 
 /**
- * Mandatory name step after OTP. Shown to first-time users (who then go on to
- * the optional ReferralCode step) and to returning users whose server-side
- * name is blank (who go straight in).
+ * Mandatory name step after OTP, for first-time users (including accounts
+ * whose name is still the server's placeholder). Leads on to the optional
+ * ReferralCode step.
  */
 export function ProfileNameScreen({ route, navigation }: AuthScreenProps<'ProfileName'>) {
-  const { userId, isNewUser, initialName } = route.params;
+  const { userId } = route.params;
   const styles = useStyles(makeStyles);
-  const [name, setName] = useState(initialName);
+  const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +35,8 @@ export function ProfileNameScreen({ route, navigation }: AuthScreenProps<'Profil
     setError(null);
     try {
       await authService.saveProfileName(trimmed);
-      if (isNewUser) {
-        navigation.navigate('ReferralCode', { userId, name: trimmed });
-        setSubmitting(false);
-      } else {
-        await authService.completeAuth(userId, trimmed);
-      }
+      navigation.navigate('ReferralCode', { userId, name: trimmed });
+      setSubmitting(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your name. Please try again.');
       setSubmitting(false);

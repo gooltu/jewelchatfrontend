@@ -1,0 +1,31 @@
+# D19: the read marker is sent only once the chat is actually opened, not
+# when the message merely arrives in the chat list.
+appId: net.jewelchat.app
+name: D19
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "Unread ${output.runId}" }
+- evalScript: ${output.msg = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-ack, BOT: "${BOT1}", MSG_ID: "${output.msg}", KIND: received }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: probe-ack, BOT: "${BOT1}", MSG_ID: "${output.msg}", KIND: displayed, TIMEOUT_MS: "5000" }
+- assertTrue: ${!output.probeOk}
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-ack, BOT: "${BOT1}", MSG_ID: "${output.msg}", KIND: displayed }

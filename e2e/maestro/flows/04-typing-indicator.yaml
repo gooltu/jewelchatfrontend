@@ -12,10 +12,10 @@ tags: [chat]
     env: { ACTION: reset }
 - runFlow:
     file: ../subflows/open-chat.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: typing, BOT: alice, STATE: composing }
+    env: { ACTION: typing, BOT: "${BOT1}", STATE: composing }
 - extendedWaitUntil:
     visible:
       id: "chat-detail.header.subtitle"
@@ -23,7 +23,7 @@ tags: [chat]
     timeout: 10000
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: typing, BOT: alice, STATE: paused }
+    env: { ACTION: typing, BOT: "${BOT1}", STATE: paused }
 - extendedWaitUntil:
     notVisible:
       text: "typing…"

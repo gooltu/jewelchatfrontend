@@ -1,0 +1,35 @@
+# D18: three messages written offline are all delivered, in order, once back online.
+appId: net.jewelchat.app
+name: D18
+tags: [direct, edge, android-only]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- setAirplaneMode: enabled
+- waitForAnimationToEnd: { timeout: 3000 }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn: { id: "chat-detail.composer.input" }
+- waitForAnimationToEnd: { timeout: 2000 }
+- inputText: "Queued 1 ${output.runId}"
+- tapOn: { id: "chat-detail.composer.send" }
+- inputText: "Queued 2 ${output.runId}"
+- tapOn: { id: "chat-detail.composer.send" }
+- inputText: "Queued 3 ${output.runId}"
+- tapOn: { id: "chat-detail.composer.send" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: expect-no-message, BOT: "${BOT1}", TIMEOUT_MS: "4000" }
+- setAirplaneMode: disabled
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-message, BOT: "${BOT1}", CONTAINS: "Queued 3 ${output.runId}", TIMEOUT_MS: "60000" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: inbox, BOT: "${BOT1}" }
+- evalScript: "${output.order = output.bot.inbox.filter(function (e) { return e.kind === 'message' && e.body.indexOf(output.runId) >= 0; }).map(function (e) { return e.body.split(' ')[1]; }).join(',')}"
+- assertTrue: ${output.order === '1,2,3'}

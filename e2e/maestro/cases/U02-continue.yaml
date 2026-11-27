@@ -1,0 +1,33 @@
+# U02: Continue opens the composer, a reply reaches the stranger, and the
+# prompt stays gone after the app restarts.
+appId: net.jewelchat.app
+name: U02
+tags: [unknown]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.bots[S1].userId}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.bots[S1].userId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail\\.composer\\.input|unknown-sender|blocked-banner" }
+    timeout: 15000
+- runFlow: ../group/unknown-continue.yaml
+- runFlow:
+    file: ../subflows/send-from-device.yaml
+    env: { BOT: "${S1}", TEXT: "Hello back ${output.runId}" }
+- launchApp: { stopApp: true }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.bots[S1].userId}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.bots[S1].userId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail\\.composer\\.input|unknown-sender|blocked-banner" }
+    timeout: 15000
+- assertVisible: { id: "chat-detail.composer.input" }
+- assertNotVisible: { id: "unknown-sender" }

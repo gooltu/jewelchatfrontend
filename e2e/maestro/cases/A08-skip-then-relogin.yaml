@@ -1,0 +1,32 @@
+# A08: a second new account skips the referral, then after signing out and
+# back in goes straight to the chat list (its name was kept).
+appId: net.jewelchat.app
+name: A08
+tags: [auth]
+---
+- runFlow:
+    file: ../subflows/signup-to-otp.yaml
+    env: { PHONE: "${SIGNUP2_PHONE}", CODE: "888888" }
+- tapOn: { id: "otp.verify" }
+- extendedWaitUntil:
+    visible: { id: "profile-name.name" }
+    timeout: 20000
+- tapOn: { id: "profile-name.name" }
+- inputText: "E2E Skipper"
+- tapOn: { id: "profile-name.continue" }
+- extendedWaitUntil:
+    visible: { id: "referral.skip" }
+    timeout: 20000
+- tapOn: { id: "referral.skip" }
+- extendedWaitUntil:
+    visible: { id: "tabbar.tab.ChatsTab" }
+    timeout: 30000
+- runFlow:
+    file: ../subflows/signup-to-otp.yaml
+    env: { PHONE: "${SIGNUP2_PHONE}", CODE: "888888" }
+- tapOn: { id: "otp.verify" }
+- extendedWaitUntil:
+    visible:
+      id: "tabbar\\.tab\\.ChatsTab|profile-name\\.name"
+    timeout: 30000
+- assertVisible: { id: "tabbar.tab.ChatsTab" }

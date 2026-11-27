@@ -67,9 +67,35 @@ step() { # step <device> <flow> [KEY=VALUE ...]
   STEP=$((STEP + 1))
   local label; label=$(printf '%02d-%s-%s' "$STEP" "$who" "$flow")
   echo "▸ [$who] $flow $*"
-  if ! maestro --device "$dev" test ${args[@]+"${args[@]}"} --test-output-dir "$OUT/$label" "$FLOWS/$flow.yaml" >"$OUT/$label.log" 2>&1; then
-    echo "✗ step $label failed — see $OUT/$label.log and $OUT/$label/"; tail -20 "$OUT/$label.log"; exit 1
+  if ! maestro --device "$dev" test ${args[@]+"${args[@]}"} --test-output-dir "$OUT/$label" "$FLOWS/$flow.yaml" >"$OUT/$label.log" 2>&1 </dev/null; then
+    echo "✗ step $label failed — see $OUT/$label.log and $OUT/$label/"; tail -20 "$OUT/$label.log"
+    case_fail "$label" "$OUT/$label.log" "$OUT/$label"
+    exit 1
   fi
+}
+
+# ---- report cases (e2e/report/report.mjs) ---------------------------------
+# A script lists its cases up front with plan_cases, wraps each scenario in
+# case_begin/case_end, and a failing step marks the current case failed and
+# every case not reached yet as skipped (later scenarios build on earlier ones).
+REPORT_PLATFORM="${REPORT_PLATFORM:-cross}"
+PLANNED=(); CASE_ID=""; CASE_START=0; DONE_CASES=" "
+_record() { node e2e/report/report.mjs case "$@" --platform "$REPORT_PLATFORM" >/dev/null 2>&1 || true; }
+plan_cases() { PLANNED=("$@"); }
+case_begin() { CASE_ID="$1"; CASE_START=$(date +%s); echo "━━ $CASE_ID"; _record "$CASE_ID" --status running; }
+case_end() {
+  _record "$CASE_ID" --status passed --duration $(( ($(date +%s) - CASE_START) * 1000 ))
+  DONE_CASES="$DONE_CASES$CASE_ID "; echo "  ✓ $CASE_ID"; CASE_ID=""
+}
+case_fail() { # case_fail <step label> <log> <maestro output dir>
+  [[ -n "$CASE_ID" ]] || return 0
+  local shot; shot=$(find "$3" -name '*.png' 2>/dev/null | sort | tail -1)
+  _record "$CASE_ID" --status failed --duration $(( ($(date +%s) - CASE_START) * 1000 )) \
+    --log "$2" ${shot:+--shot "$shot"} --note "step $1 failed"
+  DONE_CASES="$DONE_CASES$CASE_ID "
+  local id; for id in ${PLANNED[@]+"${PLANNED[@]}"}; do
+    [[ "$DONE_CASES" == *" $id "* ]] || _record "$id" --status skipped --note "an earlier case ($CASE_ID) failed"
+  done
 }
 
 airplane() { # airplane <device name> enable|disable  (Android only)

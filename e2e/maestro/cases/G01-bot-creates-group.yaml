@@ -1,0 +1,33 @@
+# G01: a bot creates a group with the device; it appears in the chat list after
+# the first message, with the group name and the sender's label on the bubble.
+appId: net.jewelchat.app
+name: G01
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-create, BOT: "${BOT1}", KEY: main, NAME: "E2E Group ${output.runId}", MEMBERS: "device,${BOT2}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT1}", ROOM: "@main", TEXT: "Welcome ${output.runId}" }
+- evalScript: ${output.msg = output.bot.id}
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- assertVisible: { id: "chat-detail.header.title", text: "E2E Group ${output.runId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.msg}.text", text: "Welcome ${output.runId}" }
+    timeout: 20000
+- assertVisible: { id: "chat-detail.message.${output.msg}.sender", text: "(?i).*${BOT1_NAME}.*" }

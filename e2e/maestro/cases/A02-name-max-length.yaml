@@ -1,0 +1,14 @@
+# A02: the name field accepts at most 50 characters.
+appId: net.jewelchat.app
+name: A02
+tags: [auth]
+---
+- tapOn: { id: "profile-name.name" }
+- eraseText: 80
+- inputText: "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijXYZXYZXYZX"
+# Check the field itself (Maestro matches the whole text): the keyboard's
+# suggestion strip shows everything typed, so a screen-wide text check would
+# see the overflow there.
+- assertVisible:
+    id: "profile-name.name"
+    text: "(abcdefghij){5}"

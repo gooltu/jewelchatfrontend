@@ -1,0 +1,37 @@
+# G13 (regression): 12 groups created while the device is away are all found
+# when it comes back (room discovery follows paging), and none are deleted on
+# the next reconnect.
+appId: net.jewelchat.app
+name: G13
+tags: [group, edge, regression]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow: ../subflows/to-chat-list.yaml
+- pressKey: Home
+- waitForAnimationToEnd: { timeout: 3000 }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-create-many, BOT: "${BOT3}", COUNT: "12", NAME: "Page ${output.runId}", MEMBERS: device, TEXT: "Paged", TIMEOUT_MS: "120000" }
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { text: ".*Page ${output.runId} 12" }
+    timeout: 60000
+- scrollUntilVisible:
+    element: { text: ".*Page ${output.runId} 1" }
+    timeout: 20000
+- scrollUntilVisible:
+    element: { text: ".*Page ${output.runId} 6" }
+    direction: UP
+    timeout: 20000
+# Reconnect again: nothing past the first page may be dropped.
+- pressKey: Home
+- waitForAnimationToEnd: { timeout: 3000 }
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/to-chat-list.yaml
+- scrollUntilVisible:
+    element: { text: ".*Page ${output.runId} 1" }
+    timeout: 30000

@@ -1,0 +1,28 @@
+# D17: the typing indicator disappears as soon as the typed message arrives
+# (no explicit 'paused' from the sender).
+appId: net.jewelchat.app
+name: D17
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: typing, BOT: "${BOT1}", STATE: composing }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.header.subtitle", text: "(?i)typing.*" }
+    timeout: 15000
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "Done typing ${output.runId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.bot.id}.text" }
+    timeout: 20000
+- extendedWaitUntil:
+    notVisible: { id: "chat-detail.header.subtitle", text: "(?i)typing.*" }
+    timeout: 5000

@@ -15,6 +15,10 @@
 //   output.runId         – unique per `reset`, for making message text unique
 //   output.bots.<name>   – { userId, jid, phone } for each bot (after `reset`)
 //   output.device        – { userId, jid, phone } of the device under test
+//   output.rooms.<key>   – { jid, node } of rooms created with KEY (group-create)
+//
+// Group actions take ROOM as a room JID or "@<key>". MEMBERS / MEMBER / SENDER
+// take "device", a bot name, or a raw JID.
 //
 // Extra script-only actions:
 //   reset                – clears bot inboxes, refreshes output.bots/device/runId
@@ -90,6 +94,17 @@ var body = {
   replyToId: opt('REPLY_TO_ID'),
   replyToCreator: opt('REPLY_TO_CREATOR'),
   since: opt('SINCE'),
+  id: opt('ID'),
+  count: opt('COUNT'),
+  forwarded: opt('FORWARDED'),
+  // Groups
+  room: opt('ROOM'),
+  name: opt('NAME'),
+  members: opt('MEMBERS'),
+  member: opt('MEMBER'),
+  affiliation: opt('AFFILIATION'),
+  sender: opt('SENDER'),
+  key: opt('KEY'),
 };
 
 var result;
@@ -99,6 +114,7 @@ if (action === 'reset') {
   output.device = info.device;
   output.bots = {};
   for (var i = 0; i < info.bots.length; i++) output.bots[info.bots[i].name] = info.bots[i];
+  output.rooms = info.rooms || {};
   output.runId = String(Date.now());
   result = info;
 } else if (action === 'expect-no-message') {
@@ -116,6 +132,12 @@ if (action === 'reset') {
   if (p.status !== 200 && p.status !== 408) must(p, 'wait-ack');
   output.probeOk = p.status === 200;
   result = p.body;
+} else if (action === 'expect-no-group-message') {
+  body.timeoutMs = Number(opt('TIMEOUT_MS') || 4000);
+  var g = call('POST', 'wait-group-message', body);
+  if (g.status === 200) throw new Error('expected NO group message to reach the bot, but got: ' + JSON.stringify(g.body));
+  if (g.status !== 408) must(g, 'wait-group-message');
+  result = { ok: true };
 } else if (action.indexOf('wait-') === 0) {
   result = pollWait(action, body);
 } else {

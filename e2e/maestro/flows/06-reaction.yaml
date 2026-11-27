@@ -12,15 +12,15 @@ tags: [chat]
     env: { ACTION: reset }
 - runFlow:
     file: ../subflows/open-chat.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 - runFlow:
     file: ../subflows/send-from-device.yaml
-    env: { BOT: alice, TEXT: "React to me ${output.runId}" }
+    env: { BOT: "${BOT1}", TEXT: "React to me ${output.runId}" }
 # Keep the id: the next runScript overwrites output.bot.
 - evalScript: ${output.deviceMsgId = output.bot.id}
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: react, BOT: alice, MSG_ID: "${output.deviceMsgId}", EMOJIS: "👍" }
+    env: { ACTION: react, BOT: "${BOT1}", MSG_ID: "${output.deviceMsgId}", EMOJIS: "👍" }
 - extendedWaitUntil:
     visible:
       id: "chat-detail.message.${output.deviceMsgId}.reaction.0"

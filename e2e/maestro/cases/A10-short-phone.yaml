@@ -1,0 +1,28 @@
+# A10: a phone number shorter than 10 digits keeps Next disabled.
+appId: net.jewelchat.app
+name: A10
+tags: [auth]
+---
+- launchApp:
+    clearState: true
+    permissions: { all: allow }
+- extendedWaitUntil:
+    visible:
+      id: "onboarding\\.get-started|phone-entry\\.phone|tabbar\\.tab\\.ChatsTab"
+    timeout: 30000
+- runFlow:
+    when: { visible: { id: "tabbar.tab.ChatsTab" } }
+    file: ../subflows/sign-out.yaml
+- runFlow:
+    when: { visible: { id: "onboarding.get-started" } }
+    commands:
+      - tapOn: { id: "onboarding.get-started" }
+- tapOn: { id: "phone-entry.phone" }
+- inputText: "900000000"
+- assertVisible:
+    id: "phone-entry.next"
+    enabled: false
+- inputText: "1"
+- assertVisible:
+    id: "phone-entry.next"
+    enabled: true

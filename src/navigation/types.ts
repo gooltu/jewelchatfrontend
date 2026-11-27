@@ -9,7 +9,7 @@ export type AuthStackParamList = {
   Onboarding: undefined;
   PhoneEntry: undefined;
   Otp: { userId: number; phone: string; active: boolean; domain: string; name: string };
-  ProfileName: { userId: number; isNewUser: boolean; initialName: string };
+  ProfileName: { userId: number };
   ReferralCode: { userId: number; name: string };
 };
 

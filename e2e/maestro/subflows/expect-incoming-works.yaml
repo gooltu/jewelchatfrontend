@@ -15,12 +15,12 @@ appId: net.jewelchat.app
           file: ../scripts/bot.js
           env:
             ACTION: send
-            BOT: alice
+            BOT: "${BOT1}"
             TEXT: "Probe ${output.probeN} ${output.runId}"
       - evalScript: ${output.probeId = output.bot.id}
       - runScript:
           file: ../scripts/bot.js
-          env: { ACTION: probe-ack, BOT: alice, MSG_ID: "${output.probeId}", TIMEOUT_MS: "8000" }
+          env: { ACTION: probe-ack, BOT: "${BOT1}", MSG_ID: "${output.probeId}", TIMEOUT_MS: "8000" }
 - assertTrue: ${output.probeOk}
 - evalScript: ${output.probeOk = false}
 - extendedWaitUntil:

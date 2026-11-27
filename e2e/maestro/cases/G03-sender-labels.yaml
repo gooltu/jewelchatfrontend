@@ -1,0 +1,37 @@
+# G03: sender labels show the phonebook name for a saved contact and the
+# phone number for a member who isn't in the phonebook.
+appId: net.jewelchat.app
+name: G03
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-add, BOT: "${BOT1}", ROOM: "@main", MEMBER: "${S1}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-affiliation, BOT: "${BOT1}", ROOM: "@main", MEMBER: "${S1}", AFFILIATION: member }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT2}", ROOM: "@main", TEXT: "From contact ${output.runId}" }
+- evalScript: ${output.known = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${S1}", ROOM: "@main", TEXT: "From stranger ${output.runId}" }
+- evalScript: ${output.stranger = output.bot.id}
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.stranger}.text" }
+    timeout: 20000
+- assertVisible: { id: "chat-detail.message.${output.known}.sender", text: "(?i).*${BOT2_NAME}.*" }
+- assertVisible: { id: "chat-detail.message.${output.stranger}.sender", text: ".*${output.bots[S1].phone}.*" }

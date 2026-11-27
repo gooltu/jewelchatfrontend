@@ -1,0 +1,18 @@
+# Platform back: Android back key, iOS edge swipe (auth screens have no header).
+appId: net.jewelchat.app
+---
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: 2%, 50%
+          end: 80%, 50%
+          duration: 400
+- waitForAnimationToEnd:
+    timeout: 2000

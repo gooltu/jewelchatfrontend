@@ -1,0 +1,22 @@
+# D13: a message of only spaces can't be sent.
+appId: net.jewelchat.app
+name: D13
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- tapOn: { id: "chat-detail.composer.input" }
+- waitForAnimationToEnd: { timeout: 2000 }
+- inputText: "     "
+- tapOn:
+    id: "chat-detail.composer.send"
+    optional: true
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: expect-no-message, BOT: "${BOT1}", TIMEOUT_MS: "5000" }
+- eraseText: 10

@@ -1,0 +1,6 @@
+# Step: send the app to the background (Home). It disconnects XMPP there.
+appId: net.jewelchat.app
+---
+- pressKey: Home
+- waitForAnimationToEnd:
+    timeout: 3000

@@ -1,0 +1,28 @@
+# G02: the device creates a group with two bots; both get the invite and the
+# device's first message.
+appId: net.jewelchat.app
+name: G02
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../group/resolve-contact.yaml
+    env: { PHONE: "${CC}${output.bots[BOT2].phone}" }
+- runFlow:
+    file: ../group/resolve-contact.yaml
+    env: { PHONE: "${CC}${output.bots[BOT3].phone}" }
+- runFlow:
+    file: ../group/create-group.yaml
+    env: { GROUP: "Device group ${output.runId}", M1: "${CC}${output.bots[BOT2].phone}", M2: "${CC}${output.bots[BOT3].phone}" }
+- runFlow:
+    file: ../group/send.yaml
+    env: { TEXT: "Hello group ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-group-message, BOT: "${BOT2}", CONTAINS: "Hello group ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-group-message, BOT: "${BOT3}", CONTAINS: "Hello group ${output.runId}" }

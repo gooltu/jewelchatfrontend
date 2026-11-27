@@ -1,0 +1,12 @@
+# A07: a valid referrer (an active bot account) is accepted and sign-up finishes.
+appId: net.jewelchat.app
+name: A07
+tags: [auth]
+---
+- tapOn: { id: "referral.referrer-phone" }
+- eraseText: 20
+- inputText: "${BOT1_PHONE}"
+- tapOn: { id: "referral.continue" }
+- extendedWaitUntil:
+    visible: { id: "tabbar.tab.ChatsTab" }
+    timeout: 30000

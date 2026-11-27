@@ -1,0 +1,26 @@
+# G05: when the owner removes the device, the group leaves its chat list and
+# later messages in that room don't bring it back.
+appId: net.jewelchat.app
+name: G05
+tags: [group, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.late.node}" }
+    timeout: 30000
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-remove, BOT: "${BOT1}", ROOM: "@late", MEMBER: device }
+- extendedWaitUntil:
+    notVisible: { id: "chat-list.row.${output.rooms.late.node}" }
+    timeout: 30000
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT1}", ROOM: "@late", TEXT: "You are gone ${output.runId}" }
+- waitForAnimationToEnd: { timeout: 5000 }
+- assertNotVisible: { id: "chat-list.row.${output.rooms.late.node}" }
+- assertVisible: { id: "tabbar.tab.ChatsTab" }

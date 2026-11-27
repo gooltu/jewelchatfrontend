@@ -1,0 +1,13 @@
+# A05: entering your own number as the referrer shows an error and stays.
+appId: net.jewelchat.app
+name: A05
+tags: [auth]
+---
+- tapOn: { id: "referral.referrer-phone" }
+- eraseText: 20
+- inputText: "${SIGNUP_PHONE}"
+- tapOn: { id: "referral.continue" }
+- extendedWaitUntil:
+    visible: { id: "referral.error" }
+    timeout: 20000
+- assertVisible: { id: "referral.skip" }

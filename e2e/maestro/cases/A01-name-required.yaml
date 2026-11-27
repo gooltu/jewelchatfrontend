@@ -1,0 +1,22 @@
+# A01: a first-time user lands on the Name screen after OTP; Continue stays
+# disabled while the name is empty or only spaces.
+appId: net.jewelchat.app
+name: A01
+tags: [auth]
+---
+- runFlow:
+    file: ../subflows/signup-to-otp.yaml
+    env: { PHONE: "${SIGNUP_PHONE}", CODE: "888888" }
+- tapOn: { id: "otp.verify" }
+- extendedWaitUntil:
+    visible: { id: "profile-name.name" }
+    timeout: 20000
+- assertVisible:
+    id: "profile-name.continue"
+    enabled: false
+- tapOn: { id: "profile-name.name" }
+- inputText: "   "
+- assertVisible:
+    id: "profile-name.continue"
+    enabled: false
+- assertNotVisible: { id: "referral.skip" }

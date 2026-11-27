@@ -1,0 +1,14 @@
+# A09: a wrong OTP shows an error and stays on the OTP screen.
+appId: net.jewelchat.app
+name: A09
+tags: [auth]
+---
+- runFlow:
+    file: ../subflows/signup-to-otp.yaml
+    env: { PHONE: "${SIGNUP_PHONE}", CODE: "111111" }
+- tapOn: { id: "otp.verify" }
+- extendedWaitUntil:
+    visible: { id: "otp.error" }
+    timeout: 20000
+- assertNotVisible: { id: "profile-name.name" }
+- assertVisible: { id: "otp.digit.0" }

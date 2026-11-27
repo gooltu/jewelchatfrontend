@@ -1,0 +1,25 @@
+# U04: Add to contacts opens the system create-contact form with the number
+# filled in; after saving, the chat shows the new name (Android emulator only:
+# on a real phone this would write into the owner's address book).
+appId: net.jewelchat.app
+name: U04
+tags: [unknown, android-only, needs-contacts]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${S3}", TEXT: "Add me ${output.runId}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.bots[S3].userId}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.bots[S3].userId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail\\.composer\\.input|unknown-sender|blocked-banner" }
+    timeout: 15000
+- runFlow:
+    file: ../group/unknown-add.yaml
+    env: { NAME: "E2E Stranger ${output.runId}" }

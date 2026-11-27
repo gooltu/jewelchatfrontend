@@ -1,0 +1,44 @@
+# G09: replies in a group: the device quotes a bot (the bot sees the right
+# parent), a bot quotes the device, and the device quotes its own message.
+appId: net.jewelchat.app
+name: G09
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT1}", ROOM: "@main", TEXT: "Quote target ${output.runId}" }
+- evalScript: ${output.target = output.bot.id}
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.target}.text" }
+    timeout: 20000
+- runFlow:
+    file: ../group/reply.yaml
+    env: { QUOTE: "Quote target ${output.runId}", TEXT: "Device reply ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-group-message, BOT: "${BOT1}", ROOM: "@main", CONTAINS: "Device reply ${output.runId}", EXPECT_REPLY_TO: "${output.target}" }
+- evalScript: ${output.deviceMsg = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT1}", ROOM: "@main", TEXT: "Bot reply ${output.runId}", REPLY_TO_ID: "${output.deviceMsg}" }
+- runFlow:
+    file: ../group/expect-reply.yaml
+    env: { TEXT: "Bot reply ${output.runId}", QUOTE: "Device reply ${output.runId}" }
+- runFlow:
+    file: ../group/reply.yaml
+    env: { QUOTE: "Device reply ${output.runId}", TEXT: "Self quote ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-group-message, BOT: "${BOT2}", ROOM: "@main", CONTAINS: "Self quote ${output.runId}", EXPECT_REPLY_TO: "${output.deviceMsg}" }

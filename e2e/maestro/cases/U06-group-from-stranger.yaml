@@ -1,0 +1,26 @@
+# U06: a group started by a stranger opens normally: groups never show the
+# unknown-sender prompt.
+appId: net.jewelchat.app
+name: U06
+tags: [unknown, group, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-create, BOT: "${S2}", NAME: "Stranger group ${output.runId}", MEMBERS: "device,${BOT1}" }
+- evalScript: ${output.room = output.bot.room; output.node = output.bot.node}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${S2}", ROOM: "${output.room}", TEXT: "Group hi ${output.runId}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- assertNotVisible: { id: "unknown-sender" }

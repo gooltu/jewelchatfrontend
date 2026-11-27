@@ -1,0 +1,49 @@
+# D20: star a message (shows in Starred), delete it for me (the bot keeps
+# its copy), pin and archive/unarchive the chat, delete the conversation, and
+# a new message brings it back.
+appId: net.jewelchat.app
+name: D20
+tags: [direct]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT2}" }
+- runFlow:
+    file: ../subflows/send-from-device.yaml
+    env: { BOT: "${BOT2}", TEXT: "Star me ${output.runId}" }
+- runFlow:
+    file: ../group/star.yaml
+    env: { TEXT: "Star me ${output.runId}" }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT2}" }
+- runFlow:
+    file: ../group/delete-message.yaml
+    env: { TEXT: "Star me ${output.runId}" }
+- runFlow:
+    file: ../group/pin-archive.yaml
+    env: { MATCH: "${BOT2_NAME}" }
+# Delete the whole conversation.
+- longPressOn: { id: "chat-list.row.${output.bots[BOT2].userId}" }
+- tapOn: { id: "conversation-actions.delete" }
+- tapOn:
+    text: "(?i)delete"
+    optional: true
+- extendedWaitUntil:
+    notVisible: { id: "chat-list.row.${output.bots[BOT2].userId}" }
+    timeout: 10000
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT2}", TEXT: "Back again ${output.runId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.bots[BOT2].userId}" }
+    timeout: 20000
+- tapOn: { id: "chat-list.row.${output.bots[BOT2].userId}" }
+- extendedWaitUntil:
+    visible: { text: "Back again ${output.runId}" }
+    timeout: 10000
+- assertNotVisible: { text: "Star me ${output.runId}" }

@@ -1,0 +1,25 @@
+# U01: a 1:1 message from someone not in the phonebook opens with the
+# unknown-sender prompt (formatted number, Add / Block / Continue) instead of the composer.
+appId: net.jewelchat.app
+name: U01
+tags: [unknown]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- evalScript: ${output.label = function (n) { var p = String(output.bots[n].phone); return "+" + CC + " " + p.slice(0, 5) + " " + p.slice(5); }}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${S1}", TEXT: "Hi stranger ${output.runId}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.bots[S1].userId}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.bots[S1].userId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail\\.composer\\.input|unknown-sender|blocked-banner" }
+    timeout: 15000
+- runFlow:
+    file: ../group/unknown-prompt.yaml
+    env: { PHONE_LABEL: "${output.label(S1).replace(/\\+/g, '\\\\+')}" }

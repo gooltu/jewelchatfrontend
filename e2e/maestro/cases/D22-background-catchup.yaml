@@ -1,0 +1,29 @@
+# D22: messages sent while the app is in the background all show, in order,
+# when it comes back.
+appId: net.jewelchat.app
+name: D22
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- pressKey: Home
+- waitForAnimationToEnd: { timeout: 3000 }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: burst, BOT: "${BOT1}", COUNT: "3", TEXT: "Away ${output.runId}" }
+- evalScript: ${output.ids = output.bot.ids}
+- launchApp: { stopApp: false }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.ids[2]}.text" }
+    timeout: 30000
+- assertVisible:
+    id: "chat-detail.message.${output.ids[1]}.text"
+    above: { id: "chat-detail.message.${output.ids[2]}.text" }
+- assertVisible:
+    id: "chat-detail.message.${output.ids[0]}.text"
+    above: { id: "chat-detail.message.${output.ids[1]}.text" }

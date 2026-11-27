@@ -13,10 +13,10 @@ tags: [chat]
     env: { ACTION: reset }
 - runFlow:
     file: ../subflows/open-chat.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 - runFlow:
     file: ../subflows/send-from-device.yaml
-    env: { BOT: alice, TEXT: "Hi Alice ${output.runId}" }
+    env: { BOT: "${BOT1}", TEXT: "Hi Alice ${output.runId}" }
 - assertTrue: ${output.bot.msgtype == '0'}
 - assertVisible:
     id: "chat-detail.message.${output.bot.id}.meta"

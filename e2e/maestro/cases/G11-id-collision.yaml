@@ -1,0 +1,31 @@
+# G11 (regression): a member's message whose id equals one of the device's own
+# message ids in the same room still shows (it used to be dropped as an echo).
+appId: net.jewelchat.app
+name: G11
+tags: [group, edge, regression]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- runFlow:
+    file: ../group/send.yaml
+    env: { TEXT: "Mine first ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-group-message, BOT: "${BOT1}", ROOM: "@main", CONTAINS: "Mine first ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT2}", ROOM: "@main", ID: "${output.bot.id}", TEXT: "Same id ${output.runId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail\\.message\\..*\\.text", text: "Same id ${output.runId}" }
+    timeout: 20000
+- assertVisible: { text: "Mine first ${output.runId}" }

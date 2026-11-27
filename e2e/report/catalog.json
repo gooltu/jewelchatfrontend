@@ -1,0 +1,907 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "A10",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Short phone number blocks Next",
+   "description": "With fewer than 10 digits the Next button stays disabled; the 10th digit enables it.",
+   "edge": true,
+   "flow": "maestro/cases/A10-short-phone.yaml"
+  },
+  {
+   "id": "A09",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Wrong OTP shows an error",
+   "description": "A wrong verification code shows an error and keeps you on the OTP screen.",
+   "edge": true,
+   "flow": "maestro/cases/A09-wrong-otp.yaml"
+  },
+  {
+   "id": "A01",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Name screen is required",
+   "description": "A first-time user lands on the Name screen after OTP; Continue stays disabled while the name is empty or only spaces.",
+   "edge": false,
+   "flow": "maestro/cases/A01-name-required.yaml"
+  },
+  {
+   "id": "A02",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Name is capped at 50 characters",
+   "description": "Typing 60 characters leaves exactly 50 in the name field.",
+   "edge": true,
+   "flow": "maestro/cases/A02-name-max-length.yaml",
+   "needs": "A01"
+  },
+  {
+   "id": "A06",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Back from Referral to edit the name",
+   "description": "Going back from the Referral screen returns to the Name screen; the edited name carries forward.",
+   "edge": true,
+   "flow": "maestro/cases/A06-back-edit-name.yaml",
+   "needs": "A01"
+  },
+  {
+   "id": "A03",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Partial referrer number blocks Continue",
+   "description": "A referrer number that isn't 10 digits keeps Continue disabled.",
+   "edge": true,
+   "flow": "maestro/cases/A03-partial-referrer.yaml",
+   "needs": "A06"
+  },
+  {
+   "id": "A05",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Own number as referrer is rejected",
+   "description": "Entering your own number as the referrer shows an error and keeps you on the screen.",
+   "edge": true,
+   "flow": "maestro/cases/A05-own-number-referrer.yaml",
+   "needs": "A06"
+  },
+  {
+   "id": "A04",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Unknown referrer is rejected",
+   "description": "A number that isn't an active JewelChat account shows an error.",
+   "edge": true,
+   "flow": "maestro/cases/A04-unknown-referrer.yaml",
+   "needs": "A06"
+  },
+  {
+   "id": "A07",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Valid referrer is accepted",
+   "description": "An active account's number is accepted as the referrer and sign-up finishes on the chat list.",
+   "edge": false,
+   "flow": "maestro/cases/A07-valid-referrer.yaml",
+   "needs": "A06"
+  },
+  {
+   "id": "A08",
+   "suite": "auth",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Skip referral; next sign-in goes straight in",
+   "description": "A second new account skips the referral; after signing out and back in it goes straight to the chat list because its name was kept.",
+   "edge": false,
+   "flow": "maestro/cases/A08-skip-then-relogin.yaml"
+  },
+  {
+   "id": "B01",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Sign in as the test device",
+   "description": "Fresh install: phone, OTP, (name/referral if needed), chat list. Every later case depends on it.",
+   "edge": false,
+   "flow": "maestro/flows/01-login.yaml"
+  },
+  {
+   "id": "B02",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Receive a message",
+   "description": "A bot message shows in the list and the thread; the device sends a delivery receipt, then a read marker once the chat is open.",
+   "edge": false,
+   "flow": "maestro/flows/02-receive-message.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "B03",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Send a message",
+   "description": "A device message reaches the bot as a text message; the bubble is addressable by the same id.",
+   "edge": false,
+   "flow": "maestro/flows/03-send-message.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "B07",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu"
+   ],
+   "title": "Offline send queue",
+   "description": "A message sent in airplane mode isn't delivered until the network returns, then arrives.",
+   "edge": false,
+   "flow": "maestro/flows/07-offline-queue.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "B09",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Reconnect keeps incoming working",
+   "description": "After an airplane-mode drop and after a background/foreground cycle, incoming messages are still stored, shown and receipted (handler-wipe regression).",
+   "edge": false,
+   "flow": "maestro/flows/09-reconnect.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "B04",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Typing indicator",
+   "description": "The bot's composing/paused states show and clear \"typing…\" in the header.",
+   "edge": false,
+   "flow": "maestro/flows/04-typing-indicator.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "B05",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Reply both ways",
+   "description": "A bot reply shows the quote; the device's reply carries the right parent id.",
+   "edge": false,
+   "flow": "maestro/flows/05-reply.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "B06",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Reaction from the bot",
+   "description": "A bot reaction renders a pill under the device's message.",
+   "edge": false,
+   "flow": "maestro/flows/06-reaction.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "B08",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Presence",
+   "description": "The bot going online/offline changes the header to \"Online\" and back.",
+   "edge": false,
+   "flow": "maestro/flows/08-presence.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D10",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Burst of 20 messages",
+   "description": "20 back-to-back messages all arrive, in order, with no duplicates.",
+   "edge": true,
+   "flow": "maestro/cases/D10-burst-order.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D11",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Duplicate message id",
+   "description": "A stanza re-sent with the same id is stored once; the first copy wins.",
+   "edge": true,
+   "flow": "maestro/cases/D11-duplicate-id.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D12",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Long, multi-line, emoji and RTL text",
+   "description": "A 2000-character, a multi-line, an emoji and an Arabic message render intact; a 300-character device message reaches the bot whole.",
+   "edge": true,
+   "flow": "maestro/cases/D12-unusual-text.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D13",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Whitespace-only message is not sent",
+   "description": "Typing only spaces and tapping send delivers nothing.",
+   "edge": true,
+   "flow": "maestro/cases/D13-whitespace-only.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D14",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Reaction replaced, then cleared",
+   "description": "A reaction can be swapped for another emoji and then removed; the pill follows.",
+   "edge": true,
+   "flow": "maestro/cases/D14-reaction-replace-clear.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D15",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Reply to a message we never had",
+   "description": "A reply quoting an unknown message shows without a quote and nothing crashes.",
+   "edge": true,
+   "flow": "maestro/cases/D15-reply-unknown-parent.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D16",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Forwarded label",
+   "description": "A message marked forwarded shows the Forwarded label.",
+   "edge": false,
+   "flow": "maestro/cases/D16-forwarded-label.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D17",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Typing clears when the message lands",
+   "description": "\"typing…\" disappears as soon as the message arrives, even without a paused state.",
+   "edge": true,
+   "flow": "maestro/cases/D17-typing-clears.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D18",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu"
+   ],
+   "title": "Three offline messages flush in order",
+   "description": "Three messages written in airplane mode are delivered in the order they were written.",
+   "edge": true,
+   "flow": "maestro/cases/D18-offline-queue-order.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D19",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Read marker only after opening",
+   "description": "A message that only reaches the chat list gets a delivery receipt but no read marker until the chat is opened.",
+   "edge": true,
+   "flow": "maestro/cases/D19-read-marker-timing.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D20",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Star, delete, pin, archive, delete chat",
+   "description": "Star shows in Starred; delete-for-me removes only our copy; pin and archive/unarchive move the row; deleting the conversation clears it and a new message brings it back empty.",
+   "edge": false,
+   "flow": "maestro/cases/D20-star-delete-pin-archive.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D21",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Forward to two chats",
+   "description": "One message forwarded to two bots reaches both, marked as forwarded.",
+   "edge": false,
+   "flow": "maestro/cases/D21-forward-two-bots.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D22",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Background catch-up",
+   "description": "Messages sent while the app is in the background all appear, in order, when it returns.",
+   "edge": true,
+   "flow": "maestro/cases/D22-background-catchup.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "D23",
+   "suite": "direct",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Message while the app was killed",
+   "description": "A message sent while the app was force-stopped should appear after relaunch.",
+   "edge": true,
+   "flow": "maestro/cases/D23-killed-app.yaml",
+   "needs": "B01",
+   "knownIssue": "Not fetched: catch-up only runs from the last background time (README \"Not fixed\")."
+  },
+  {
+   "id": "U01",
+   "suite": "unknown",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Unknown sender prompt",
+   "description": "A message from someone not in the phonebook opens with the prompt (formatted number, Add / Block / Continue) instead of the composer.",
+   "edge": false,
+   "flow": "maestro/cases/U01-prompt.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "U02",
+   "suite": "unknown",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Continue, reply, prompt stays gone",
+   "description": "Continue opens the composer, a reply reaches the stranger, and the prompt doesn't return after a restart.",
+   "edge": false,
+   "flow": "maestro/cases/U02-continue.yaml",
+   "needs": "U01"
+  },
+  {
+   "id": "U03",
+   "suite": "unknown",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Block survives restart; Unblock restores",
+   "description": "After Block, later messages neither show nor get a receipt, also after a restart; Unblock brings back the composer and new messages.",
+   "edge": true,
+   "flow": "maestro/cases/U03-block-unblock.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "U04",
+   "suite": "unknown",
+   "tier": "emulator",
+   "platforms": [
+    "emu"
+   ],
+   "title": "Add to contacts",
+   "description": "Add to contacts opens the system form with the number filled in; after saving, the chat shows the new name.",
+   "edge": false,
+   "flow": "maestro/cases/U04-add-to-contacts.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "U05",
+   "suite": "unknown",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Phonebook sender gets no prompt",
+   "description": "A sender already in the phonebook opens straight to the composer.",
+   "edge": false,
+   "flow": "maestro/cases/U05-phonebook-no-prompt.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "U06",
+   "suite": "unknown",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Group from a stranger gets no prompt",
+   "description": "A group started by a stranger opens normally; groups never show the prompt.",
+   "edge": true,
+   "flow": "maestro/cases/U06-group-from-stranger.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "G01",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Bot creates a group with the device",
+   "description": "The group appears after its first message, with the right name and the sender's label on the bubble.",
+   "edge": false,
+   "flow": "maestro/cases/G01-bot-creates-group.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "G03",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Sender labels: name vs number",
+   "description": "A saved contact is labelled with their phonebook name; a member not in the phonebook with their number.",
+   "edge": false,
+   "flow": "maestro/cases/G03-sender-labels.yaml",
+   "needs": "G01"
+  },
+  {
+   "id": "G09",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Replies in a group",
+   "description": "The device quotes a bot, a bot quotes the device, and the device quotes itself; every side sees the right parent.",
+   "edge": false,
+   "flow": "maestro/cases/G09-group-replies.yaml",
+   "needs": "G01"
+  },
+  {
+   "id": "G10",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Bot reaction in a group",
+   "description": "A member's reaction on the device's group message renders under it.",
+   "edge": false,
+   "flow": "maestro/cases/G10-group-reactions.yaml",
+   "needs": "G01"
+  },
+  {
+   "id": "G11",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Same message id from another member",
+   "description": "A member message whose id equals one of ours in the same room still shows (it used to be dropped as our echo).",
+   "edge": true,
+   "flow": "maestro/cases/G11-id-collision.yaml",
+   "needs": "G01"
+  },
+  {
+   "id": "G06",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Rename with emoji and a long name",
+   "description": "An owner's rename updates the chat header and the chat-list row.",
+   "edge": true,
+   "flow": "maestro/cases/G06-rename.yaml",
+   "needs": "G01"
+  },
+  {
+   "id": "G07",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Member leaves",
+   "description": "When a member leaves, Group Info's member count drops.",
+   "edge": false,
+   "flow": "maestro/cases/G07-member-leaves.yaml",
+   "needs": "G03"
+  },
+  {
+   "id": "G12",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Group catch-up",
+   "description": "Group messages sent while offline (Android) or in the background (both) all appear on return, in order.",
+   "edge": true,
+   "flow": "maestro/cases/G12-group-catchup.yaml",
+   "needs": "G03"
+  },
+  {
+   "id": "G15",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Forward into and out of a group",
+   "description": "A group message forwards to a 1:1 chat (marked forwarded) and a 1:1 message forwards into the group.",
+   "edge": false,
+   "flow": "maestro/cases/G15-forward-group.yaml",
+   "needs": "G06"
+  },
+  {
+   "id": "G02",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Device creates a group",
+   "description": "The device creates a group with two bots; both get the invite and the first message.",
+   "edge": false,
+   "flow": "maestro/cases/G02-device-creates-group.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "G04",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Added mid-conversation",
+   "description": "A device added to an existing group receives the messages sent after it joined.",
+   "edge": false,
+   "flow": "maestro/cases/G04-added-mid-conversation.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "G05",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Removed by the owner",
+   "description": "When the owner removes the device the group leaves the chat list, and later messages don't bring it back.",
+   "edge": true,
+   "flow": "maestro/cases/G05-removed-by-owner.yaml",
+   "needs": "G04"
+  },
+  {
+   "id": "G14",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Interleaved burst from three members",
+   "description": "15 messages from three members in quick succession all arrive exactly once.",
+   "edge": true,
+   "flow": "maestro/cases/G14-interleaved-burst.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "G13",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "12 groups created while away",
+   "description": "All 12 are listed on return (discovery follows paging past 10) and none is dropped on the next reconnect.",
+   "edge": true,
+   "flow": "maestro/cases/G13-many-rooms.yaml",
+   "needs": "B01"
+  },
+  {
+   "id": "G16",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Empty group you were added to",
+   "description": "A group you're added to should appear before anyone writes in it.",
+   "edge": false,
+   "flow": "maestro/cases/G16-empty-invite.yaml",
+   "needs": "B01",
+   "knownIssue": "Hidden until the first message: the chat list requires a last message (README \"Not fixed\")."
+  },
+  {
+   "id": "G08",
+   "suite": "group",
+   "tier": "emulator",
+   "platforms": [
+    "emu",
+    "ios"
+   ],
+   "title": "Device leaves a group",
+   "description": "Leaving removes the row and the members see the device leave.",
+   "edge": false,
+   "flow": "maestro/cases/G08-device-leaves.yaml",
+   "needs": "G06"
+  },
+  {
+   "id": "X01",
+   "suite": "cross-app",
+   "tier": "emulator",
+   "platforms": [
+    "cross"
+   ],
+   "title": "First contact and presence",
+   "description": "The emulator finds the simulator user in its phonebook, messages them; the simulator sees it and shows the emulator as Online.",
+   "edge": false
+  },
+  {
+   "id": "X02",
+   "suite": "cross-app",
+   "tier": "emulator",
+   "platforms": [
+    "cross"
+   ],
+   "title": "Text both ways",
+   "description": "Each app's message reaches the other.",
+   "edge": false,
+   "needs": "X01"
+  },
+  {
+   "id": "X03",
+   "suite": "cross-app",
+   "tier": "emulator",
+   "platforms": [
+    "cross"
+   ],
+   "title": "Reply across apps",
+   "description": "The emulator quotes the simulator's message; the simulator sees the quote.",
+   "edge": false,
+   "needs": "X01"
+  },
+  {
+   "id": "X04",
+   "suite": "cross-app",
+   "tier": "emulator",
+   "platforms": [
+    "cross"
+   ],
+   "title": "Mixed group: two apps and two bots",
+   "description": "A bot creates a group with both apps and another bot; everyone sends and every app shows the right sender labels.",
+   "edge": false,
+   "needs": "X01"
+  },
+  {
+   "id": "X05",
+   "suite": "cross-app",
+   "tier": "emulator",
+   "platforms": [
+    "cross"
+   ],
+   "title": "Emulator offline catch-up",
+   "description": "The emulator goes into airplane mode while the simulator writes in the group; it catches up when back online.",
+   "edge": false,
+   "needs": "X01"
+  },
+  {
+   "id": "X06",
+   "suite": "cross-app",
+   "tier": "emulator",
+   "platforms": [
+    "cross"
+   ],
+   "title": "Simulator background catch-up",
+   "description": "The simulator app is in the background while the emulator writes; it catches up when foregrounded.",
+   "edge": false,
+   "needs": "X01"
+  },
+  {
+   "id": "X07",
+   "suite": "cross-app",
+   "tier": "emulator",
+   "platforms": [
+    "cross"
+   ],
+   "title": "Forward from one app to the other and to a bot",
+   "description": "The simulator forwards a group message to the emulator (Forwarded label) and to one of its own bots.",
+   "edge": false,
+   "needs": "X01"
+  },
+  {
+   "id": "P01",
+   "suite": "weekly",
+   "tier": "weekly",
+   "platforms": [
+    "devices"
+   ],
+   "title": "Push notification opens the chat",
+   "description": "The Pixel is in the background; a message from the emulator raises a real FCM notification, and tapping it opens that chat.",
+   "edge": false
+  },
+  {
+   "id": "P02",
+   "suite": "weekly",
+   "tier": "weekly",
+   "platforms": [
+    "devices"
+   ],
+   "title": "Samsung Wi-Fi drop and recovery",
+   "description": "The Samsung goes into airplane mode (Wi-Fi off too, see README); it misses a message and queues its own reply, then catches up and delivers once back online.",
+   "edge": false
+  },
+  {
+   "id": "P03",
+   "suite": "weekly",
+   "tier": "weekly",
+   "platforms": [
+    "devices"
+   ],
+   "title": "Real keyboard keeps the composer visible",
+   "description": "On the Samsung, opening the keyboard leaves the composer and send button visible.",
+   "edge": false
+  },
+  {
+   "id": "P04",
+   "suite": "weekly",
+   "tier": "weekly",
+   "platforms": [
+    "devices"
+   ],
+   "title": "Four-device group smoke",
+   "description": "Emulator, simulator, Pixel and Samsung: create a group, everyone sends, a reply, an offline catch-up.",
+   "edge": false
+  },
+  {
+   "id": "P05",
+   "suite": "weekly",
+   "tier": "weekly",
+   "platforms": [
+    "devices"
+   ],
+   "title": "Pixel and iOS simulator 1:1 with offline",
+   "description": "The simulator starts a 1:1 chat with the Pixel (phones never get test contacts, so they only answer); the Pixel replies, then catches up on a message sent while it was in airplane mode.",
+   "edge": false
+  }
+ ]
+}

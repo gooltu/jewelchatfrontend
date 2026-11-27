@@ -1,0 +1,21 @@
+# G16 (known issue): a group you're added to should appear even before anyone
+# writes in it. Today it stays hidden until the first message, so the runner
+# reports a failure here as expected.
+appId: net.jewelchat.app
+name: G16
+tags: [group, known-issue]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-create, BOT: "${BOT1}", KEY: quiet, NAME: "Quiet ${output.runId}", MEMBERS: device }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.quiet.node}" }
+    timeout: 30000

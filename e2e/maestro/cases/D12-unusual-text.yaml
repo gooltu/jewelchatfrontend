@@ -1,0 +1,45 @@
+# D12: long, multi-line, emoji and right-to-left texts render intact; a long
+# device message reaches the bot whole.
+appId: net.jewelchat.app
+name: D12
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- evalScript: ${output.long = new Array(201).join('0123456789') + ' END ' + output.runId}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "${output.long}" }
+- evalScript: ${output.longId = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "Line one ${output.runId}\nLine two\nLine three" }
+- evalScript: ${output.multiId = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "🎉🔥👍🏽 ${output.runId}" }
+- evalScript: ${output.emojiId = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "مرحبا بالعالم ${output.runId}" }
+- evalScript: ${output.rtlId = output.bot.id}
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.rtlId}.text", text: "مرحبا بالعالم ${output.runId}" }
+    timeout: 20000
+- assertVisible: { id: "chat-detail.message.${output.emojiId}.text", text: "🎉🔥👍🏽 ${output.runId}" }
+- assertVisible: { id: "chat-detail.message.${output.multiId}.text", text: "Line one ${output.runId}\\s+Line two\\s+Line three" }
+- scrollUntilVisible:
+    element: { id: "chat-detail.message.${output.longId}.text" }
+    direction: UP
+    timeout: 20000
+# Device -> bot: a 300-character message arrives whole (Maestro can only type ASCII on Android).
+- evalScript: ${output.devLong = 'Long ' + output.runId + ' ' + new Array(31).join('abcdefghij')}
+- runFlow:
+    file: ../subflows/send-from-device.yaml
+    env: { BOT: "${BOT1}", TEXT: "${output.devLong}" }
+- assertTrue: ${output.bot.body === output.devLong}

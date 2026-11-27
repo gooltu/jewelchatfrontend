@@ -15,18 +15,18 @@ tags: [chat]
     file: ../scripts/bot.js
     env:
       ACTION: send
-      BOT: alice
+      BOT: "${BOT1}"
       TEXT: "Hello from Alice ${output.runId}"
 - evalScript: ${output.aliceMsgId = output.bot.id}
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: wait-ack, BOT: alice, MSG_ID: "${output.aliceMsgId}", KIND: received }
+    env: { ACTION: wait-ack, BOT: "${BOT1}", MSG_ID: "${output.aliceMsgId}", KIND: received }
 - runFlow:
     file: ../subflows/open-chat.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 - assertVisible:
     id: "chat-detail.message.${output.aliceMsgId}.text"
     text: "Hello from Alice ${output.runId}"
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: wait-ack, BOT: alice, MSG_ID: "${output.aliceMsgId}", KIND: displayed }
+    env: { ACTION: wait-ack, BOT: "${BOT1}", MSG_ID: "${output.aliceMsgId}", KIND: displayed }

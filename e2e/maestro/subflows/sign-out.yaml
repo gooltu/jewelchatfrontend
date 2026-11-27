@@ -1,0 +1,15 @@
+# Signs out from the Settings tab and waits for the phone-entry/onboarding screen.
+appId: net.jewelchat.app
+---
+- runFlow: to-chat-list.yaml
+- tapOn:
+    id: "tabbar.tab.ProfileTab"
+- scrollUntilVisible:
+    element:
+      text: "Sign out"
+    timeout: 15000
+- tapOn: "Sign out"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding\\.get-started|phone-entry\\.phone"
+    timeout: 20000

@@ -1,0 +1,11 @@
+# A03: a referrer number that isn't 10 digits keeps Continue disabled.
+appId: net.jewelchat.app
+name: A03
+tags: [auth]
+---
+- tapOn: { id: "referral.referrer-phone" }
+- inputText: "90000"
+- assertVisible:
+    id: "referral.continue"
+    enabled: false
+- eraseText: 20

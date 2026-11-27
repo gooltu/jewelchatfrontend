@@ -42,6 +42,8 @@ function plainClient({ resource, username, password, ...params }) {
   _resourceBinding({ iqCaller, streamFeatures }, resource);
   _sessionEstablishment({ iqCaller, streamFeatures });
   plain(sasl);
+  // Exposed so the bot can send IQs and await their results (MUC Light).
+  entity.iqCaller = iqCaller;
   return entity;
 }
 

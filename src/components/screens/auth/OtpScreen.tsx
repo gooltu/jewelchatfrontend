@@ -91,12 +91,11 @@ export function OtpScreen({ route, navigation }: AuthScreenProps<'Otp'>) {
     setError(null);
     try {
       await authService.verifyOtp(userId, code, { phone, domain });
-      // First-time users: name (mandatory) then referral (optional).
-      // Returning users with no name on the server: name only.
-      if (!active) {
-        navigation.navigate('ProfileName', { userId, isNewUser: true, initialName: name });
-      } else if (!name.trim()) {
-        navigation.navigate('ProfileName', { userId, isNewUser: false, initialName: '' });
+      // First-time users get name (mandatory) then referral (optional). An
+      // account whose name is still the server's placeholder never finished
+      // sign-up (or was reset by an admin), so it counts as first-time too.
+      if (!active || authService.isUnsetName(name)) {
+        navigation.navigate('ProfileName', { userId });
       } else {
         await authService.completeAuth(userId, name.trim());
       }

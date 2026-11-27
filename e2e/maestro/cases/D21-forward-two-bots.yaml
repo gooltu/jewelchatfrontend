@@ -1,0 +1,31 @@
+# D21: forwarding one message to two chats at once delivers it to both,
+# marked as forwarded.
+appId: net.jewelchat.app
+name: D21
+tags: [direct]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT3}" }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT2}" }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- runFlow:
+    file: ../subflows/send-from-device.yaml
+    env: { BOT: "${BOT1}", TEXT: "Pass it on ${output.runId}" }
+- runFlow:
+    file: ../group/forward-multi.yaml
+    env: { TEXT: "Pass it on ${output.runId}", TARGET1: "${BOT2_NAME}", TARGET2: "${BOT3_NAME}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-message, BOT: "${BOT2}", CONTAINS: "Pass it on ${output.runId}", EXPECT_FORWARDED: "true" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-message, BOT: "${BOT3}", CONTAINS: "Pass it on ${output.runId}", EXPECT_FORWARDED: "true" }

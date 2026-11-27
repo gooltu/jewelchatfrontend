@@ -1,0 +1,30 @@
+# G06: a rename by the owner (emoji, long name) updates the chat header and the
+# chat-list row.
+appId: net.jewelchat.app
+name: G06
+tags: [group, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- evalScript: ${output.newName = 'Renamed 🎉 ' + output.runId + ' with a much longer name than usual'}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-rename, BOT: "${BOT1}", ROOM: "@main", NAME: "${output.newName}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-groupconfig, BOT: "${BOT2}", ROOM: "@main", NAME: "${output.newName}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}", text: ".*Renamed.*${output.runId}.*" }
+    timeout: 30000
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- assertVisible: { id: "chat-detail.header.title", text: ".*Renamed.*${output.runId}.*" }

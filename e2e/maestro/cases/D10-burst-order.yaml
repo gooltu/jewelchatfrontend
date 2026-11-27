@@ -1,0 +1,37 @@
+# D10: a burst of 20 messages from a bot arrives complete, in order, with no duplicates.
+appId: net.jewelchat.app
+name: D10
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: burst, BOT: "${BOT1}", COUNT: "20", TEXT: "Burst ${output.runId}" }
+- evalScript: ${output.ids = output.bot.ids}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-ack, BOT: "${BOT1}", MSG_ID: "${output.ids[19]}", KIND: received, TIMEOUT_MS: "30000" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.ids[19]}.text", text: "Burst ${output.runId} 20" }
+    timeout: 20000
+- assertVisible:
+    id: "chat-detail.message.${output.ids[18]}.text"
+    above: { id: "chat-detail.message.${output.ids[19]}.text" }
+- assertVisible:
+    id: "chat-detail.message.${output.ids[17]}.text"
+    above: { id: "chat-detail.message.${output.ids[18]}.text" }
+# No duplicate copy of the last one.
+- assertNotVisible:
+    text: "Burst ${output.runId} 20"
+    index: 1
+# The first one is there too (scroll up to it).
+- scrollUntilVisible:
+    element: { id: "chat-detail.message.${output.ids[0]}.text" }
+    direction: UP
+    timeout: 20000

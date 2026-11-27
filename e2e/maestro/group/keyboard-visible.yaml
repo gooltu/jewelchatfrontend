@@ -1,0 +1,17 @@
+# Step: in the open chat, bringing up the real on-screen keyboard leaves the
+# composer input and the send button visible (not hidden behind the keyboard).
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- tapOn:
+    id: "chat-detail.composer.input"
+- waitForAnimationToEnd:
+    timeout: 3000
+- inputText: "kb"
+- assertVisible:
+    id: "chat-detail.composer.input"
+- assertVisible:
+    id: "chat-detail.composer.send"
+- takeScreenshot: keyboard-open
+- eraseText: 5

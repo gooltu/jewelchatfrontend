@@ -17,13 +17,13 @@ tags: [chat, android-only, regression]
 # before any reconnect.
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: send, BOT: alice, TEXT: "Before reconnect ${output.runId}" }
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "Before reconnect ${output.runId}" }
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: wait-ack, BOT: alice, MSG_ID: "${output.bot.id}", KIND: received }
+    env: { ACTION: wait-ack, BOT: "${BOT1}", MSG_ID: "${output.bot.id}", KIND: received }
 - runFlow:
     file: ../subflows/open-chat.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 
 # 1) Network drop.
 - setAirplaneMode: enabled

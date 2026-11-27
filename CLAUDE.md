@@ -242,6 +242,15 @@ Other rules:
 - Remote push doesn't work in Expo Go (SDK 53+). Use `expo run:android` or a release build.
 - The real MongooseIM v3 payload shape (`alert.title` = bare sender JID, or the room JID for MUC Light) is mapped defensively in `buildFcmMessage`. Confirm it against a live payload when first testing on a device.
 
+## Sign-up after OTP
+
+`OtpScreen` sends a user to `ProfileNameScreen` (name, mandatory, saved via `/updateProfileName`)
+and then `ReferralCodeScreen` (optional, `/initialDetails`) when the account is new (`active:
+false`) **or** its server name is still the placeholder `defaultJCUname`
+(`authService.isUnsetName`): every new row and every admin reset gets that placeholder, so a reset
+account goes through sign-up again. `/initialDetails` only writes the name when a valid referrer
+comes with it, and overwrites it when it does, so the referral step re-sends the saved name.
+
 ## Play Store compliance
 
 Release checklist, Data safety answers, reviewer login and the deletion-request runbook: `docs/play-store-release.md`.
@@ -348,8 +357,11 @@ schema is base DDL + every migration applied in order, not `schema.ts` alone. La
   unparsable ESM build, which breaks *any* test importing a `@reduxjs/toolkit` slice. Don't remove
   that mapping.
 - `npm run typecheck` — `tsc --noEmit`
-- `npm run e2e [-- <flow>]` — Maestro flows on one Android emulator against XMPP bot peers
-  (`e2e/bot/server.mjs`, `@xmpp/client` — deliberately not the app's own strophe code). Setup,
-  flow list and the bot HTTP API: `e2e/README.md`. Hits the real servers by default; test
-  accounts sign in with the server's temporary fixed OTP.
-- `npm run e2e:direct` / `e2e:group` / `e2e:unknown` — multi-device suites (emulator, iOS simulator, Pixel, Samsung; no bots for direct/group, stranger bots for unknown-sender). Setup and coverage: `e2e/README.md` "Multi-device suites".
+- `npm run e2e:emu` — the every-run E2E tier: resets the test accounts through the JewelChat admin
+  API, then runs auth, 1:1, unknown-sender and group cases on the Android emulator and the iOS
+  simulator in parallel against XMPP bot peers (`e2e/bot/server.mjs`, `@xmpp/client` — deliberately
+  not the app's own strophe code; it speaks MUC Light too), then emulator↔simulator cases. Live
+  report: `e2e/.out/report/index.html`. Case list, order, dependencies and descriptions:
+  `e2e/report/catalog.json`. `npm run e2e [-- <case id or flow>]` is the quick 1:1-only variant.
+- `npm run e2e:weekly` — physical phones (Pixel, Samsung) for push, real network and keyboard, and
+  a four-device smoke; run weekly or less. Setup, account pool, reset and report: `e2e/README.md`.

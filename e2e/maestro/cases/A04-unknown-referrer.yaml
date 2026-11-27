@@ -1,0 +1,13 @@
+# A04: a referrer number that isn't an active JewelChat account shows an error.
+appId: net.jewelchat.app
+name: A04
+tags: [auth]
+---
+- tapOn: { id: "referral.referrer-phone" }
+- eraseText: 20
+- inputText: "${UNKNOWN_REF}"
+- tapOn: { id: "referral.continue" }
+- extendedWaitUntil:
+    visible: { id: "referral.error" }
+    timeout: 20000
+- assertVisible: { id: "referral.skip" }

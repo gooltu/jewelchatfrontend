@@ -1,0 +1,50 @@
+# U03: Block hides the stranger's later messages and sends no receipt, survives
+# an app restart; Unblock brings the composer and new messages back.
+appId: net.jewelchat.app
+name: U03
+tags: [unknown, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${S2}", TEXT: "Spam ${output.runId}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.bots[S2].userId}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.bots[S2].userId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail\\.composer\\.input|unknown-sender|blocked-banner" }
+    timeout: 15000
+- runFlow: ../group/unknown-block.yaml
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${S2}", TEXT: "After block ${output.runId}" }
+- evalScript: ${output.blockedId = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: probe-ack, BOT: "${S2}", MSG_ID: "${output.blockedId}", KIND: received, TIMEOUT_MS: "6000" }
+- assertTrue: ${!output.probeOk}
+- runFlow:
+    file: ../group/expect-no-text.yaml
+    env: { TEXT: "After block ${output.runId}" }
+- launchApp: { stopApp: true }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.bots[S2].userId}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.bots[S2].userId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail\\.composer\\.input|unknown-sender|blocked-banner" }
+    timeout: 15000
+- assertVisible: { id: "blocked-banner" }
+- runFlow: ../group/unblock.yaml
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${S2}", TEXT: "After unblock ${output.runId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.bot.id}.text" }
+    timeout: 20000

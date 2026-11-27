@@ -363,6 +363,18 @@ export async function checkForExplodedBombs(): Promise<void> {
   await refreshAfterBombExplosion();
 }
 
+/**
+ * The game server's name for an account that has never set one: every new
+ * /registerPhoneNumber row and every admin reset gets it.
+ */
+export const PLACEHOLDER_NAME = 'defaultJCUname';
+
+/** True when the server-side name is missing or still the placeholder. */
+export function isUnsetName(name: string | null | undefined): boolean {
+  const trimmed = (name ?? '').trim();
+  return !trimmed || trimmed === PLACEHOLDER_NAME;
+}
+
 /** Phone/OTP sign-up flow — see gameserver/phoneAuthApi.ts for the wire contract. */
 export async function requestOtp(
   phone: string,
@@ -400,7 +412,7 @@ export async function completeAuth(userId: number, displayName?: string): Promis
     getStoredRefreshToken(),
   ]);
   store.dispatch(
-    signedIn({ userId: String(userId), jid: jid ?? '', displayName: displayName ?? 'defaultJCUname' }),
+    signedIn({ userId: String(userId), jid: jid ?? '', displayName: displayName ?? PLACEHOLDER_NAME }),
   );
   // Best-effort: a hiccup seeding the welcome bot contact/messages must
   // never block sign-in itself (this used to be awaited ahead of the
@@ -517,7 +529,7 @@ export async function restoreSession(): Promise<void> {
   // users. Token validity is checked lazily: the first authenticated
   // gameserverClient request either succeeds or 401s into tokenRefresh.ts's
   // attemptRefreshAndRetry, which refreshes-and-retries or calls logout().
-  store.dispatch(signedIn({ userId, jid, displayName: 'defaultJCUname' }));
+  store.dispatch(signedIn({ userId, jid, displayName: PLACEHOLDER_NAME }));
   // Runs the exact same catch-up as a background->foreground transition
   // (see useAppState.ts/reconnectChat): connects, flushes the outgoing
   // queue, resumes any media upload interrupted mid-upload, and backfills

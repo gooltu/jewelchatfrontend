@@ -1,0 +1,23 @@
+# Step (Android): with the app in the background, open the notification shade,
+# tap the notification containing ${TEXT}, and land in that chat.
+appId: net.jewelchat.app
+---
+- swipe:
+    start: 50%, 1%
+    end: 50%, 70%
+    duration: 500
+- extendedWaitUntil:
+    visible:
+      text: "(?i).*${TEXT}.*"
+    timeout: 60000
+- tapOn:
+    text: "(?i).*${TEXT}.*"
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.composer.input"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail\\.message\\..*\\.text"
+      text: "(?i)${TEXT}"
+    timeout: 30000

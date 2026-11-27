@@ -1,0 +1,27 @@
+# G07: when a member leaves, Group Info's member count drops (owner, device and
+# the stranger from G03 remain).
+appId: net.jewelchat.app
+name: G07
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-leave, BOT: "${BOT2}", ROOM: "@main" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-affiliation, BOT: "${BOT1}", ROOM: "@main", MEMBER: "${BOT2}", AFFILIATION: none }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- runFlow:
+    file: ../group/expect-members.yaml
+    env: { COUNT: "3" }

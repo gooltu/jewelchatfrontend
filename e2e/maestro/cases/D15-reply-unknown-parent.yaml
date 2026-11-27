@@ -1,0 +1,27 @@
+# D15: a reply quoting a message this device never had still shows (without
+# a quote) and nothing crashes.
+appId: net.jewelchat.app
+name: D15
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- runScript:
+    file: ../scripts/bot.js
+    env:
+      ACTION: send
+      BOT: "${BOT1}"
+      TEXT: "Orphan reply ${output.runId}"
+      REPLY_TO_ID: "e2e-missing-${output.runId}"
+      REPLY_TO_CREATOR: "${BOT1}"
+- evalScript: ${output.msg = output.bot.id}
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.msg}.text" }
+    timeout: 20000
+- assertNotVisible: { id: "chat-detail.message.${output.msg}.quote" }
+- assertVisible: { id: "chat-detail.composer.input" }

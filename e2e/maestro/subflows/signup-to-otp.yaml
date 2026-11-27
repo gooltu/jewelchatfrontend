@@ -1,0 +1,50 @@
+# Fresh launch -> phone ${PHONE} -> OTP screen with ${CODE} typed (not verified).
+# Signs out first when a session survived clearState (iOS keeps the Keychain).
+appId: net.jewelchat.app
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- extendedWaitUntil:
+    visible:
+      id: "onboarding\\.get-started|phone-entry\\.phone|tabbar\\.tab\\.ChatsTab"
+    timeout: 30000
+- runFlow:
+    when:
+      visible:
+        id: "tabbar.tab.ChatsTab"
+    file: sign-out.yaml
+- runFlow:
+    when:
+      visible:
+        id: "onboarding.get-started"
+    commands:
+      - tapOn:
+          id: "onboarding.get-started"
+- tapOn:
+    id: "phone-entry.phone"
+- inputText: ${PHONE}
+- tapOn:
+    id: "phone-entry.next"
+- extendedWaitUntil:
+    visible:
+      id: "otp.digit.0"
+    timeout: 20000
+- tapOn:
+    id: "otp.digit.0"
+# One digit at a time: the boxes auto-advance, and typing all six at once
+# drops one on iOS.
+- evalScript: ${output.otp = String(CODE).split('')}
+- inputText: ${output.otp[0]}
+- waitForAnimationToEnd: { timeout: 500 }
+- inputText: ${output.otp[1]}
+- waitForAnimationToEnd: { timeout: 500 }
+- inputText: ${output.otp[2]}
+- waitForAnimationToEnd: { timeout: 500 }
+- inputText: ${output.otp[3]}
+- waitForAnimationToEnd: { timeout: 500 }
+- inputText: ${output.otp[4]}
+- waitForAnimationToEnd: { timeout: 500 }
+- inputText: ${output.otp[5]}
+- waitForAnimationToEnd: { timeout: 500 }

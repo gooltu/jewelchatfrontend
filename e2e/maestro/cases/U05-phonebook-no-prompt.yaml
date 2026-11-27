@@ -1,0 +1,22 @@
+# U05: a sender who is already in the phonebook never gets the prompt.
+appId: net.jewelchat.app
+name: U05
+tags: [unknown]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT3}", TEXT: "Known ${output.runId}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.bots[BOT3].userId}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.bots[BOT3].userId}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail\\.composer\\.input|unknown-sender|blocked-banner" }
+    timeout: 15000
+- assertVisible: { id: "chat-detail.composer.input" }
+- assertNotVisible: { id: "unknown-sender" }

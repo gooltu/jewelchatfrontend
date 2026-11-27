@@ -46,10 +46,18 @@ const NS = {
   chatStates: 'http://jabber.org/protocol/chatstates',
   reactions: 'urn:xmpp:reactions:0',
   roster: 'jabber:iq:roster',
+  // MUC Light — must match src/chatserver/muclight.ts.
+  muclight: 'urn:xmpp:muclight:0',
+  mlCreate: 'urn:xmpp:muclight:0#create',
+  mlAffiliations: 'urn:xmpp:muclight:0#affiliations',
+  mlConfiguration: 'urn:xmpp:muclight:0#configuration',
+  discoItems: 'http://jabber.org/protocol/disco#items',
 };
 
 /** @type {Map<string, Bot>} */
 const bots = new Map();
+/** Rooms created with a `key`, so a later flow can find a room an earlier one made. */
+const roomsByKey = new Map();
 /** The device's own identity, resolved once at startup. */
 let device = /** @type {{ userId: number, jid: string, phone: string } | null} */ (null);
 
@@ -113,6 +121,8 @@ class Bot {
     /** Everything chat-relevant the bot has received, newest last. */
     this.inbox = /** @type {InboxEntry[]} */ ([]);
     this.waiters = new Set();
+    /** Group rooms (bare JIDs) this bot is currently a member/owner of. */
+    this.rooms = new Set();
   }
 
   async start() {
@@ -158,6 +168,7 @@ class Bot {
   onStanza(stanza) {
     if (stanza.is('presence')) return this.onPresence(stanza);
     if (!stanza.is('message')) return;
+    if (stanza.attrs.type === 'groupchat') return this.onGroupStanza(stanza);
     const from = bare(stanza.attrs.from);
     const id = stanza.attrs.id ?? null;
     const now = Date.now();
@@ -275,6 +286,115 @@ class Bot {
     );
   }
 
+  /** MUC Light room traffic: `from` is `room@muclight.<domain>/<member bare JID>`
+   * for messages, and the bare room JID for affiliation/config notifications. */
+  onGroupStanza(stanza) {
+    const fromAttr = stanza.attrs.from ?? '';
+    const room = bare(fromAttr);
+    const slash = fromAttr.indexOf('/');
+    const sender = slash >= 0 ? fromAttr.slice(slash + 1) : '';
+    const now = Date.now();
+
+    const aff = stanza.getChild('x', NS.mlAffiliations);
+    if (aff) {
+      const users = aff.getChildren('user').map((u) => ({ jid: u.text().trim(), affiliation: u.attrs.affiliation }));
+      const me = users.find((u) => u.jid === this.jid);
+      if (me && me.affiliation === 'none') this.rooms.delete(room);
+      else if (me) this.rooms.add(room);
+      return this.push({ kind: 'affiliations', room, users, at: now });
+    }
+    const conf = stanza.getChild('x', NS.mlConfiguration);
+    if (conf) return this.push({ kind: 'groupconfig', room, roomname: conf.getChildText('roomname'), at: now });
+
+    const reactions = stanza.getChild('reactions', NS.reactions);
+    if (reactions) {
+      const emojis = reactions.getChildren('reaction').map((r) => r.text());
+      return this.push({ kind: 'groupreaction', room, sender, refId: reactions.attrs.id, emojis, at: now });
+    }
+    const body = stanza.getChildText('body');
+    if (!body) return;
+    const reply = stanza.getChild('reply');
+    this.push({
+      kind: 'groupmessage',
+      room,
+      sender,
+      id: stanza.attrs.id ?? null,
+      msgtype: stanza.attrs.msgtype ?? null,
+      forwarded: stanza.attrs.forwarded === '1',
+      body,
+      reply: reply ? { id: reply.attrs.id, creator: reply.attrs.creator } : null,
+      at: now,
+    });
+  }
+
+  mucDomain() {
+    return `muclight.${this.jid.split('@')[1]}`;
+  }
+
+  /** Creates a room with `memberJids` as members (this bot is owner). The
+   * create IQ's result is empty, so — like the app (muclight.createGroupRoom)
+   * — the room JID comes from the #affiliations notification that follows. */
+  async createGroup(name, memberJids) {
+    const since = Date.now();
+    const known = new Set(this.rooms);
+    await this.xmpp.iqCaller.request(
+      xml(
+        'iq',
+        { type: 'set', to: this.mucDomain(), id: `e2e-create-${randomUUID()}` },
+        xml(
+          'query',
+          { xmlns: NS.mlCreate },
+          xml('configuration', {}, xml('roomname', {}, name)),
+          xml('occupants', {}, ...memberJids.map((jid) => xml('user', { affiliation: 'member' }, jid))),
+        ),
+      ),
+      15000,
+    );
+    const note = await this.waitFor((e) => e.kind === 'affiliations' && !known.has(e.room), { since, timeoutMs: 15000 });
+    this.rooms.add(note.room);
+    return note.room;
+  }
+
+  async setAffiliation(room, jid, affiliation) {
+    await this.xmpp.iqCaller.request(
+      xml(
+        'iq',
+        { type: 'set', to: room, id: `e2e-aff-${randomUUID()}` },
+        xml('query', { xmlns: NS.mlAffiliations }, xml('user', { affiliation }, jid)),
+      ),
+      15000,
+    );
+  }
+
+  async renameGroup(room, name) {
+    await this.xmpp.iqCaller.request(
+      xml(
+        'iq',
+        { type: 'set', to: room, id: `e2e-conf-${randomUUID()}` },
+        xml('query', { xmlns: NS.mlConfiguration }, xml('roomname', {}, name)),
+      ),
+      15000,
+    );
+  }
+
+  /** Same shape the app sends (syncService.attemptSend), with type=groupchat. */
+  async sendGroupMessage(room, { text, id = `e2e-${randomUUID()}`, replyTo = null }) {
+    const children = [xml('body', {}, text)];
+    if (replyTo) children.push(xml('reply', { id: replyTo.id, creator: replyTo.creator }));
+    await this.xmpp.send(xml('message', { to: room, type: 'groupchat', id, msgtype: '0' }, ...children));
+    return id;
+  }
+
+  sendGroupReactions(room, msgId, emojis) {
+    return this.xmpp.send(
+      xml(
+        'message',
+        { to: room, type: 'groupchat', id: `e2e-react-${randomUUID()}` },
+        xml('reactions', { xmlns: NS.reactions, id: msgId }, ...emojis.map((e) => xml('reaction', {}, e))),
+      ),
+    );
+  }
+
   async setAvailable(available) {
     await this.xmpp.send(available ? xml('presence') : xml('presence', { type: 'unavailable' }));
   }
@@ -322,7 +442,7 @@ function resolveTo(to) {
 
 const routes = {
   'GET /health': () => ({ ok: true, device, bots: [...bots.values()].map((b) => b.describe()) }),
-  'GET /bots': () => ({ device, bots: [...bots.values()].map((b) => b.describe()) }),
+  'GET /bots': () => ({ device, bots: [...bots.values()].map((b) => b.describe()), rooms: roomsInfo() }),
 
   /** Clear inboxes between flows; optionally reset auto-receipt behaviour. */
   'POST /reset': () => {
@@ -337,9 +457,127 @@ const routes = {
   'POST /send': async (b) => {
     const bot = getBot(b.bot);
     const replyTo = b.replyToId ? { id: String(b.replyToId), creator: b.replyToCreator ?? device.jid } : null;
-    const id = await bot.sendMessage(resolveTo(b.to), { text: b.text ?? '', replyTo, forwarded: !!b.forwarded });
+    const id = await bot.sendMessage(resolveTo(b.to), {
+      text: b.text ?? '',
+      replyTo,
+      forwarded: !!b.forwarded && b.forwarded !== 'false',
+      ...(b.id ? { id: String(b.id) } : {}),
+    });
     return { id };
   },
+
+  /** { bot, to?, count, text? } -> { ids } — `count` messages back to back,
+   * texts "<text> 1".."<text> N", for ordering / dedup checks. */
+  'POST /burst': async (b) => {
+    const bot = getBot(b.bot);
+    const n = Math.min(Number(b.count ?? 10), 100);
+    const ids = [];
+    for (let i = 1; i <= n; i += 1) ids.push(await bot.sendMessage(resolveTo(b.to), { text: `${b.text ?? 'burst'} ${i}` }));
+    return { ids, id: ids[ids.length - 1] };
+  },
+
+  // ---- Groups (MUC Light) -------------------------------------------------
+  // `room` is a bare room JID (from group-create). Member names accept
+  // "device", a bot name, or a raw JID (see resolveTo).
+
+  /** { bot, name, members: "device,bob" | string[] } -> { room } */
+  'POST /group-create': async (b) => {
+    const members = listOf(b.members).map(resolveTo);
+    const room = await getBot(b.bot).createGroup(String(b.name ?? 'E2E group'), members);
+    if (b.key) roomsByKey.set(String(b.key), room);
+    return { room, id: room, node: room.split('@')[0] };
+  },
+
+  /** { bot, count, name, members } -> { rooms } — e.g. 12 rooms for the paging test. */
+  'POST /group-create-many': async (b) => {
+    const bot = getBot(b.bot);
+    const members = listOf(b.members).map(resolveTo);
+    const rooms = [];
+    for (let i = 1; i <= Math.min(Number(b.count ?? 1), 30); i += 1) {
+      const room = await bot.createGroup(`${b.name ?? 'E2E group'} ${i}`, members);
+      rooms.push(room);
+      // The chat list hides a group until it has a message, so post one.
+      if (b.text) await bot.sendGroupMessage(room, { text: `${b.text} ${i}` });
+    }
+    return { rooms };
+  },
+
+  /** { bot, room, member, affiliation?: member|owner|none } */
+  'POST /group-add': async (b) => {
+    await getBot(b.bot).setAffiliation(roomOf(b.room), resolveTo(b.member), b.affiliation ?? 'member');
+    return { ok: true };
+  },
+  'POST /group-remove': async (b) => {
+    await getBot(b.bot).setAffiliation(roomOf(b.room), resolveTo(b.member), 'none');
+    return { ok: true };
+  },
+  /** { bot, room } — the bot leaves (sets its own affiliation to none). */
+  'POST /group-leave': async (b) => {
+    const bot = getBot(b.bot);
+    await bot.setAffiliation(roomOf(b.room), bot.jid, 'none');
+    bot.rooms.delete(roomOf(b.room));
+    return { ok: true };
+  },
+  /** { bot, room, name } */
+  'POST /group-rename': async (b) => {
+    await getBot(b.bot).renameGroup(roomOf(b.room), String(b.name));
+    return { ok: true };
+  },
+  /** { bot, room, text, id?, replyToId?, replyToCreator? } -> { id }.
+   * replyToCreator defaults to the device's occupant JID (room/<device JID>). */
+  'POST /group-send': async (b) => {
+    const room = roomOf(b.room);
+    const replyTo = b.replyToId
+      ? { id: String(b.replyToId), creator: b.replyToCreator ? resolveTo(b.replyToCreator) : `${room}/${device.jid}` }
+      : null;
+    const id = await getBot(b.bot).sendGroupMessage(room, {
+      text: b.text ?? '',
+      replyTo,
+      ...(b.id ? { id: String(b.id) } : {}),
+    });
+    return { id };
+  },
+  /** { bot, room, count, text? } -> { ids } */
+  'POST /group-burst': async (b) => {
+    const bot = getBot(b.bot);
+    const ids = [];
+    for (let i = 1; i <= Math.min(Number(b.count ?? 5), 100); i += 1) {
+      ids.push(await bot.sendGroupMessage(roomOf(b.room), { text: `${b.text ?? 'burst'} ${i}` }));
+    }
+    return { ids, id: ids[ids.length - 1] };
+  },
+  /** { bot, room, msgId, emojis } */
+  'POST /group-react': async (b) => {
+    const emojis = Array.isArray(b.emojis) ? b.emojis : String(b.emojis ?? '').split(',').filter(Boolean);
+    await getBot(b.bot).sendGroupReactions(roomOf(b.room), String(b.msgId), emojis);
+    return { ok: true };
+  },
+  /** { bot, room?, contains?, sender?: "device"|bot|jid } -> the group message
+   * entry (incl. `id`, the sender's SENDER_MSG_ID). Defaults to the device's. */
+  'POST /wait-group-message': async (b) => {
+    const sender = resolveTo(b.sender ?? 'device');
+    const needle = b.contains ? String(b.contains).toLowerCase() : null;
+    return getBot(b.bot).waitFor(
+      (e) =>
+        e.kind === 'groupmessage' &&
+        (!b.room || e.room === roomOf(b.room)) &&
+        e.sender === sender &&
+        (!needle || e.body.toLowerCase().includes(needle)),
+      opts(b),
+    );
+  },
+  /** { bot, room, member, affiliation } — wait until the room reports it. */
+  'POST /wait-affiliation': async (b) => {
+    const jid = resolveTo(b.member);
+    const want = b.affiliation ?? 'member';
+    return getBot(b.bot).waitFor(
+      (e) => e.kind === 'affiliations' && e.room === roomOf(b.room) && e.users.some((u) => u.jid === jid && u.affiliation === want),
+      opts(b),
+    );
+  },
+  /** { bot, room, name } — wait for a rename notification. */
+  'POST /wait-groupconfig': async (b) =>
+    getBot(b.bot).waitFor((e) => e.kind === 'groupconfig' && e.room === roomOf(b.room) && (!b.name || e.roomname === b.name), opts(b)),
 
   /** { bot, to?, state: composing|paused|active } */
   'POST /typing': async (b) => {
@@ -380,13 +618,16 @@ const routes = {
     return { ok: true };
   },
 
-  /** { bot, contains?, since?, timeoutMs? } -> the device's message entry (incl. its `id`).
+  /** { bot, contains?, sender?, since?, timeoutMs? } -> the device's message entry (incl. its `id`).
+   * `sender` (default "device") may be another app's raw JID in cross-app runs.
    * `contains` ignores case: a phone keyboard may auto-capitalise what Maestro types. */
-  'POST /wait-message': async (b) =>
-    getBot(b.bot).waitFor(
-      (e) => e.kind === 'message' && e.from === device.jid && (!b.contains || e.body.toLowerCase().includes(String(b.contains).toLowerCase())),
+  'POST /wait-message': async (b) => {
+    const sender = resolveTo(b.sender ?? 'device');
+    return getBot(b.bot).waitFor(
+      (e) => e.kind === 'message' && e.from === sender && (!b.contains || e.body.toLowerCase().includes(String(b.contains).toLowerCase())),
       opts(b),
-    ),
+    );
+  },
 
   /** { bot, msgId, kind: received|displayed } — wait for the DEVICE to ack a message the bot sent. */
   'POST /wait-ack': async (b) =>
@@ -419,6 +660,27 @@ const routes = {
   /** { bot } -> full inbox, for debugging a failing flow. */
   'POST /inbox': (b) => ({ inbox: getBot(b.bot).inbox }),
 };
+
+/** A room JID, or "@key" for a room created with that key. */
+function roomOf(r) {
+  const v = String(r ?? '');
+  if (!v.startsWith('@')) return v;
+  const room = roomsByKey.get(v.slice(1));
+  if (!room) throw new HttpError(404, `no room with key "${v.slice(1)}" (have: ${[...roomsByKey.keys()].join(', ')})`);
+  return room;
+}
+
+function roomsInfo() {
+  const out = {};
+  for (const [key, jid] of roomsByKey) out[key] = { jid, node: jid.split('@')[0] };
+  return out;
+}
+
+/** "a,b" or ["a","b"] -> ["a","b"] */
+function listOf(v) {
+  if (Array.isArray(v)) return v.map(String);
+  return String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+}
 
 function opts(b) {
   return { since: Number(b.since ?? 0), timeoutMs: Number(b.timeoutMs ?? 20000) };

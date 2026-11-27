@@ -15,16 +15,16 @@ tags: [chat, needs-contacts]
     env: { ACTION: reset }
 - runFlow:
     file: ../subflows/import-phonebook.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: subscribe, BOT: alice }
+    env: { ACTION: subscribe, BOT: "${BOT1}" }
 - runFlow:
     file: ../subflows/open-chat.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: presence, BOT: alice, AVAILABLE: "false" }
+    env: { ACTION: presence, BOT: "${BOT1}", AVAILABLE: "false" }
 - extendedWaitUntil:
     notVisible:
       id: "chat-detail.header.subtitle"
@@ -32,7 +32,7 @@ tags: [chat, needs-contacts]
     timeout: 15000
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: presence, BOT: alice, AVAILABLE: "true" }
+    env: { ACTION: presence, BOT: "${BOT1}", AVAILABLE: "true" }
 - extendedWaitUntil:
     visible:
       id: "chat-detail.header.subtitle"

@@ -1,0 +1,25 @@
+# D23 (known issue): a message sent while the app was force-stopped should
+# show after relaunch. Today it doesn't (catch-up only runs from the last
+# background time), so the runner reports a failure here as expected.
+appId: net.jewelchat.app
+name: D23
+tags: [direct, edge, known-issue]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- killApp
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "While killed ${output.runId}" }
+- launchApp: { stopApp: false }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- extendedWaitUntil:
+    visible: { text: "While killed ${output.runId}" }
+    timeout: 30000

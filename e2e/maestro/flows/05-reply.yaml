@@ -13,17 +13,17 @@ tags: [chat]
     env: { ACTION: reset }
 - runFlow:
     file: ../subflows/open-chat.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 
 # Bot replies to a device message -> quote block visible.
 - runFlow:
     file: ../subflows/send-from-device.yaml
-    env: { BOT: alice, TEXT: "Quote me ${output.runId}" }
+    env: { BOT: "${BOT1}", TEXT: "Quote me ${output.runId}" }
 - runScript:
     file: ../scripts/bot.js
     env:
       ACTION: send
-      BOT: alice
+      BOT: "${BOT1}"
       TEXT: "Replying ${output.runId}"
       REPLY_TO_ID: "${output.bot.id}"
 - extendedWaitUntil:
@@ -65,6 +65,6 @@ tags: [chat]
     file: ../scripts/bot.js
     env:
       ACTION: wait-message
-      BOT: alice
+      BOT: "${BOT1}"
       CONTAINS: "Device reply ${output.runId}"
       EXPECT_REPLY_TO: "${output.botMsgId}"

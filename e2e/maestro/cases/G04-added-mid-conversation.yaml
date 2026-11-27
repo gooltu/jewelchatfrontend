@@ -1,0 +1,36 @@
+# G04: a device added to an existing group later receives the messages sent
+# after it joined.
+appId: net.jewelchat.app
+name: G04
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-create, BOT: "${BOT1}", KEY: late, NAME: "Late group ${output.runId}", MEMBERS: "${BOT2}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT2}", ROOM: "@late", TEXT: "Before you ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-add, BOT: "${BOT1}", ROOM: "@late", MEMBER: device }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-affiliation, BOT: "${BOT1}", ROOM: "@late", MEMBER: device, AFFILIATION: member }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT1}", ROOM: "@late", TEXT: "After you joined ${output.runId}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.late.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.late.node}" }
+- extendedWaitUntil:
+    visible: { text: "After you joined ${output.runId}" }
+    timeout: 20000

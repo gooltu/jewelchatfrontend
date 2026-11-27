@@ -1,0 +1,23 @@
+# G08: the device leaves a group: the row goes away and the members see it leave.
+appId: net.jewelchat.app
+name: G08
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- runFlow:
+    file: ../group/leave.yaml
+    env: { GROUP: "Renamed" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-affiliation, BOT: "${BOT1}", ROOM: "@main", MEMBER: device, AFFILIATION: none }

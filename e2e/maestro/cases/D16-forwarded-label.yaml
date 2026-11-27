@@ -1,0 +1,18 @@
+# D16: a message the bot marks as forwarded shows the Forwarded label.
+appId: net.jewelchat.app
+name: D16
+tags: [direct]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT1}", TEXT: "Fwd in ${output.runId}", FORWARDED: "true" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.bot.id}.forwarded" }
+    timeout: 20000

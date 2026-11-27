@@ -1,0 +1,10 @@
+# Step: if the open chat shows the unknown-sender prompt, answer Continue.
+# (Physical phones have no test contacts, so every peer is "unknown" there.)
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow:
+    when:
+      visible:
+        id: "unknown-sender"
+    file: unknown-continue.yaml

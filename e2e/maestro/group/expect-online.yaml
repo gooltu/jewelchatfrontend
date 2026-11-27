@@ -1,0 +1,10 @@
+# Step: in the open 1:1 chat, the header shows the peer as Online.
+appId: net.jewelchat.app
+---
+- launchApp: { stopApp: false }
+- runFlow: ../subflows/dismiss-logbox.yaml
+- extendedWaitUntil:
+    visible:
+      id: "chat-detail.header.subtitle"
+      text: "Online"
+    timeout: 45000

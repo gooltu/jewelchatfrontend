@@ -1,0 +1,45 @@
+# G15: a group message forwards into a 1:1 chat (the bot gets it marked as
+# forwarded); a 1:1 message forwarded into the group reaches its members.
+appId: net.jewelchat.app
+name: G15
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-send, BOT: "${BOT1}", ROOM: "@main", TEXT: "Share this ${output.runId}" }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- extendedWaitUntil:
+    visible: { text: "Share this ${output.runId}" }
+    timeout: 20000
+- runFlow:
+    file: ../group/forward.yaml
+    env: { TEXT: "Share this ${output.runId}", TARGET: "${BOT3_NAME}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-message, BOT: "${BOT3}", CONTAINS: "Share this ${output.runId}", EXPECT_FORWARDED: "true" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: send, BOT: "${BOT3}", TEXT: "Into the group ${output.runId}" }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT3}" }
+- extendedWaitUntil:
+    visible: { text: "Into the group ${output.runId}" }
+    timeout: 20000
+- runFlow:
+    file: ../group/forward.yaml
+    env: { TEXT: "Into the group ${output.runId}", TARGET: "Renamed" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-group-message, BOT: "${BOT1}", ROOM: "@main", CONTAINS: "Into the group ${output.runId}" }

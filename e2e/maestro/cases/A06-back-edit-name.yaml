@@ -1,0 +1,24 @@
+# A06: going back from the Referral screen returns to the Name screen, and an
+# edited name carries forward.
+appId: net.jewelchat.app
+name: A06
+tags: [auth]
+---
+- tapOn: { id: "profile-name.name" }
+- eraseText: 80
+- inputText: "E2E First"
+- tapOn: { id: "profile-name.continue" }
+- extendedWaitUntil:
+    visible: { id: "referral.skip" }
+    timeout: 20000
+- runFlow: ../subflows/go-back.yaml
+- extendedWaitUntil:
+    visible: { id: "profile-name.name" }
+    timeout: 10000
+- tapOn: { id: "profile-name.name" }
+- eraseText: 80
+- inputText: "E2E Signup"
+- tapOn: { id: "profile-name.continue" }
+- extendedWaitUntil:
+    visible: { id: "referral.skip" }
+    timeout: 20000

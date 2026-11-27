@@ -13,7 +13,7 @@ tags: [chat, android-only]
     env: { ACTION: reset }
 - runFlow:
     file: ../subflows/open-chat.yaml
-    env: { BOT: alice }
+    env: { BOT: "${BOT1}" }
 - setAirplaneMode: enabled
 # Going offline makes the dev build raise network warnings (LogBox toast).
 - waitForAnimationToEnd:
@@ -30,10 +30,10 @@ tags: [chat, android-only]
     id: "chat-detail.composer.send"
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: expect-no-message, BOT: alice, CONTAINS: "Offline ${output.runId}", TIMEOUT_MS: "5000" }
+    env: { ACTION: expect-no-message, BOT: "${BOT1}", CONTAINS: "Offline ${output.runId}", TIMEOUT_MS: "5000" }
 - setAirplaneMode: disabled
 - runScript:
     file: ../scripts/bot.js
-    env: { ACTION: wait-message, BOT: alice, CONTAINS: "Offline ${output.runId}", TIMEOUT_MS: "60000" }
+    env: { ACTION: wait-message, BOT: "${BOT1}", CONTAINS: "Offline ${output.runId}", TIMEOUT_MS: "60000" }
 - assertVisible:
     id: "chat-detail.message.${output.bot.id}"

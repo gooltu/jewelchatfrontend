@@ -1,0 +1,30 @@
+# G10: a bot's reaction on the device's group message renders under it.
+appId: net.jewelchat.app
+name: G10
+tags: [group]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow: ../subflows/to-chat-list.yaml
+- extendedWaitUntil:
+    visible: { id: "chat-list.row.${output.rooms.main.node}" }
+    timeout: 30000
+- tapOn: { id: "chat-list.row.${output.rooms.main.node}" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.composer.input" }
+    timeout: 15000
+- runFlow:
+    file: ../group/send.yaml
+    env: { TEXT: "React in group ${output.runId}" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: wait-group-message, BOT: "${BOT1}", ROOM: "@main", CONTAINS: "React in group ${output.runId}" }
+- evalScript: ${output.msg = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: group-react, BOT: "${BOT1}", ROOM: "@main", MSG_ID: "${output.msg}", EMOJIS: "🔥" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.msg}.reaction.0", text: ".*🔥.*" }
+    timeout: 15000

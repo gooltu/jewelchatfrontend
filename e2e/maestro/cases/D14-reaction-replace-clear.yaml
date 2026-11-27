@@ -1,0 +1,35 @@
+# D14: a bot's reaction can be replaced by another emoji, then cleared entirely.
+appId: net.jewelchat.app
+name: D14
+tags: [direct, edge]
+---
+- launchApp: { stopApp: false }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: reset }
+- runFlow:
+    file: ../subflows/open-chat.yaml
+    env: { BOT: "${BOT1}" }
+- runFlow:
+    file: ../subflows/send-from-device.yaml
+    env: { BOT: "${BOT1}", TEXT: "React twice ${output.runId}" }
+- evalScript: ${output.msg = output.bot.id}
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: react, BOT: "${BOT1}", MSG_ID: "${output.msg}", EMOJIS: "👍" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.msg}.reaction.0", text: ".*👍.*" }
+    timeout: 15000
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: react, BOT: "${BOT1}", MSG_ID: "${output.msg}", EMOJIS: "❤️" }
+- extendedWaitUntil:
+    visible: { id: "chat-detail.message.${output.msg}.reaction.0", text: ".*❤️.*" }
+    timeout: 15000
+- assertNotVisible: { id: "chat-detail.message.${output.msg}.reaction.0", text: ".*👍.*" }
+- runScript:
+    file: ../scripts/bot.js
+    env: { ACTION: react, BOT: "${BOT1}", MSG_ID: "${output.msg}", EMOJIS: "," }
+- extendedWaitUntil:
+    notVisible: { id: "chat-detail.message.${output.msg}.reaction.0" }
+    timeout: 15000
